@@ -77,9 +77,18 @@ describe("submissions: canSubmitForTask eligibility", () => {
     expect(r).toEqual({ ok: true });
   });
 
-  it("blocks Phase 2 task types as unsupported", () => {
+  it("allows Phase 2 on-chain task types", () => {
     const r = canSubmitForTask({
-      task: makeTask({ taskType: "pool_delegation" }),
+      task: makeTask({ taskType: "pool_delegation", taskConfig: {} }),
+      priorSubmissions: [],
+      now: NOW,
+    });
+    expect(r).toEqual({ ok: true });
+  });
+
+  it("blocks Phase 3+ task types as unsupported", () => {
+    const r = canSubmitForTask({
+      task: makeTask({ taskType: "x_tweet", taskConfig: {} }),
       priorSubmissions: [],
       now: NOW,
     });

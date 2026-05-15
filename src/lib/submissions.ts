@@ -7,6 +7,7 @@
  */
 
 import { parseManualReviewConfig } from "./verification/manual";
+import { isPhase3PlusTaskType, isTaskTypeEnabledInPhase2 } from "./verification";
 
 export interface TaskLike {
   id: string;
@@ -55,7 +56,15 @@ export function canSubmitForTask(opts: {
   now: number;
 }): SubmissionEligibility {
   if (opts.task.status !== "active") return { ok: false, reason: "task_not_active" };
-  if (opts.task.taskType !== "manual_review") return { ok: false, reason: "unsupported_task_type" };
+  // Phase 2 enables six on-chain types alongside manual_review. Phase 3+
+  // OAuth / webhook types still come through this path eventually, but
+  // require additional plumbing — gate them off for now.
+  if (isPhase3PlusTaskType(opts.task.taskType)) {
+    return { ok: false, reason: "unsupported_task_type" };
+  }
+  if (!isTaskTypeEnabledInPhase2(opts.task.taskType)) {
+    return { ok: false, reason: "unsupported_task_type" };
+  }
   const startsAt = toMillis(opts.task.startsAt);
   const endsAt = toMillis(opts.task.endsAt);
   if (startsAt != null && opts.now < startsAt) return { ok: false, reason: "task_not_started" };
@@ -78,21 +87,54 @@ function toMillis(d: Date | number | null | undefined): number | null {
 }
 
 export interface ProofValidationInput {
+  taskType?: string;
   taskConfig: unknown;
   proofUrl?: string | null;
   hasScreenshot: boolean;
+  txHash?: string | null;
 }
 
 export type ProofValidationResult =
   | { ok: true }
-  | { ok: false; field: "proofUrl" | "screenshot"; reason: string };
+  | { ok: false; field: "proofUrl" | "screenshot" | "txHash"; reason: string };
+
+const TX_HASH_RE = /^[0-9a-f]{64}$/;
+
+const ON_CHAIN_TASK_TYPES = new Set([
+  "pool_delegation",
+  "drep_delegation",
+  "drep_registered",
+  "tx_swap",
+  "asset_purchase",
+  "governance_vote",
+]);
+
+const TX_HASH_REQUIRED_TYPES = new Set(["tx_swap", "asset_purchase"]);
 
 /**
- * Validate the submission's proof inputs against the task config. Re-parses
- * the taskConfig (CLAUDE.md § Task config validation: "never trust"). Run
- * at submit time AND at admin verify time.
+ * Validate the submission's proof inputs against the task type + config.
+ *
+ *  - manual_review: re-parse the manual config, enforce proofUrl/screenshot.
+ *  - tx_swap / asset_purchase: require a well-formed tx hash.
+ *  - pool_delegation / drep_delegation / drep_registered / governance_vote:
+ *    no proof from the user — the verifier reads on-chain state directly.
+ *
+ * Run at submit time AND at admin re-verify time. Re-parses any task config
+ * touched (CLAUDE.md § Task config validation: "never trust").
  */
 export function validateProofInputs(input: ProofValidationInput): ProofValidationResult {
+  const taskType = input.taskType ?? "manual_review";
+  if (TX_HASH_REQUIRED_TYPES.has(taskType)) {
+    const tx = (input.txHash ?? "").trim().toLowerCase();
+    if (!tx) return { ok: false, field: "txHash", reason: "required" };
+    if (!TX_HASH_RE.test(tx)) return { ok: false, field: "txHash", reason: "invalid_hash" };
+    return { ok: true };
+  }
+  if (ON_CHAIN_TASK_TYPES.has(taskType)) {
+    // No user-supplied proof required.
+    return { ok: true };
+  }
+  // manual_review (and the legacy default path).
   const cfg = parseManualReviewConfig(input.taskConfig);
   if (cfg.requiresProofUrl) {
     const url = (input.proofUrl ?? "").trim();

@@ -11,24 +11,39 @@ import { canSubmitForTask, validateProofInputs } from "@/lib/submissions";
 import { checkUpload, proofR2Key } from "@/lib/uploads";
 
 /**
- * Server action: submit a manual_review proof.
+ * Server action: submit a task. Phase 2 unifies the manual_review path with
+ * the on-chain types (pool_delegation, drep_delegation, drep_registered,
+ * tx_swap, asset_purchase, governance_vote).
  *
  * Flow:
  *   1. `getCurrentStakeAddress()` — throws not_authenticated if no session.
  *   2. Load the task. Validate eligibility (`canSubmitForTask`).
- *   3. Validate proof inputs against `task.taskConfig` (re-parsed).
- *   4. If a screenshot is attached, gate it via `checkUpload` and PUT to
- *      R2 at `submissions/${userId}/${submissionId}/proof.${ext}`.
- *   5. INSERT submission row with status=pending.
- *   6. Log audit row.
- *   7. Redirect to /projects/[slug] (the SaveForm full-reload handles the
- *      UX otherwise; redirect is fine here because the submission page
- *      is single-shot).
+ *   3. Validate proof inputs vs task type (`validateProofInputs`):
+ *      - manual_review: proofUrl + screenshot per taskConfig
+ *      - tx_swap / asset_purchase: txHash regex
+ *      - other on-chain: no proof required
+ *   4. For manual: upload screenshot to R2 if present.
+ *   5. INSERT submission with status=pending.
+ *   6. For on-chain types: enqueue `{ submissionId }` to VERIFY_QUEUE.
+ *   7. Log audit row.
+ *   8. Redirect to `/projects/[slug]?submitted=<id>`.
  *
- * R2 PUT happens server-side via env.R2.put — no presigned URL needed.
- * Cap 5 MB, PNG/JPEG/WEBP only (uploads.ts).
+ * The unique index `(userId, taskId, txHash)` on submissions enforces
+ * no-double-claim at the DB level. Catch the unique-violation error and
+ * surface a clean `already_claimed:<txHash>` redirect param.
  */
-export async function submitManualReview(formData: FormData): Promise<void> {
+
+const ON_CHAIN_TYPES = new Set([
+  "pool_delegation",
+  "drep_delegation",
+  "drep_registered",
+  "tx_swap",
+  "asset_purchase",
+  "governance_vote",
+]);
+const TX_HASH_TYPES = new Set(["tx_swap", "asset_purchase"]);
+
+export async function submitTask(formData: FormData): Promise<void> {
   const userId = await getCurrentStakeAddress();
   const taskId = String(formData.get("taskId") ?? "");
   const projectSlug = String(formData.get("projectSlug") ?? "");
@@ -46,13 +61,16 @@ export async function submitManualReview(formData: FormData): Promise<void> {
   if (!eligibility.ok) throw new Error(`ineligible:${eligibility.reason}`);
 
   const proofUrl = String(formData.get("proofUrl") ?? "").trim() || null;
+  const txHashRaw = String(formData.get("txHash") ?? "").trim().toLowerCase() || null;
   const file = formData.get("screenshot");
   const hasScreenshot = file instanceof File && file.size > 0;
 
   const validation = validateProofInputs({
+    taskType: task.taskType,
     taskConfig: task.taskConfig,
     proofUrl,
     hasScreenshot,
+    txHash: txHashRaw,
   });
   if (!validation.ok) throw new Error(`bad_proof:${validation.field}:${validation.reason}`);
 
@@ -72,32 +90,69 @@ export async function submitManualReview(formData: FormData): Promise<void> {
     proofR2KeyValue = key;
   }
 
-  await db.insert(submissions).values({
-    id: submissionId,
-    userId,
-    taskId,
-    status: "pending",
-    proofUrl,
-    proofR2Key: proofR2KeyValue,
-  });
+  const txHashForRow = TX_HASH_TYPES.has(task.taskType) ? txHashRaw : null;
+
+  try {
+    await db.insert(submissions).values({
+      id: submissionId,
+      userId,
+      taskId,
+      status: "pending",
+      proofUrl,
+      proofR2Key: proofR2KeyValue,
+      txHash: txHashForRow,
+    });
+  } catch (e) {
+    // SQLite unique-index violation on (user_id, task_id, tx_hash). The
+    // error text varies between drivers — match on "UNIQUE" / "unique".
+    const msg = (e as Error).message ?? "";
+    if (/unique/i.test(msg) && txHashForRow) {
+      redirect(`/projects/${projectSlug}?already_claimed=${txHashForRow.slice(0, 16)}`);
+    }
+    throw e;
+  }
+
   await logChange({
     userId,
     entityType: "submission",
     entityId: submissionId,
     field: "_create",
     oldValue: null,
-    newValue: { taskId, hasProofUrl: !!proofUrl, hasScreenshot: !!proofR2KeyValue },
+    newValue: {
+      taskId,
+      taskType: task.taskType,
+      hasProofUrl: !!proofUrl,
+      hasScreenshot: !!proofR2KeyValue,
+      hasTxHash: !!txHashForRow,
+    },
   });
+
+  // Enqueue for the on-chain types. manual_review stays pending until an
+  // admin actions it from the queue page.
+  if (ON_CHAIN_TYPES.has(task.taskType)) {
+    const { env } = getCloudflareContext();
+    const q = (env as unknown as { VERIFY_QUEUE?: { send(body: unknown): Promise<void> } }).VERIFY_QUEUE;
+    if (q) {
+      try {
+        await q.send({ submissionId });
+      } catch (e) {
+        console.warn("[submit] queue send failed; submission stays pending", e);
+      }
+    } else {
+      console.warn("[submit] VERIFY_QUEUE binding missing; submission stays pending");
+    }
+  }
 
   redirect(`/projects/${projectSlug}?submitted=${submissionId}`);
 }
 
 /**
- * Minimal R2 binding type for the env shim — we don't pull
- * @cloudflare/workers-types in here since the global type is provided by
- * the auto-generated cloudflare-env.d.ts (gitignored). This type-only
- * declaration keeps the action type-clean without that file.
+ * Legacy alias for the Phase 1 form action name. The submit page now wires
+ * through `submitTask` directly, but any cached server-action ID from a
+ * pre-Phase-2 build will still POST here.
  */
+export const submitManualReview = submitTask;
+
 interface R2Bucket {
   put(key: string, body: ArrayBuffer | ReadableStream | string, opts?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
 }
