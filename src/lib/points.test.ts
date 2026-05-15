@@ -1,6 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+const kvStore = new Map<string, string>();
+const kvGet = vi.fn(async (k: string, _type: "json") => {
+  const v = kvStore.get(k);
+  return v ? JSON.parse(v) : null;
+});
+const kvPut = vi.fn(async (k: string, v: string) => {
+  kvStore.set(k, v);
+});
+
+vi.mock("@opennextjs/cloudflare", () => ({
+  getCloudflareContext: () => ({ env: { KV: { get: kvGet, put: kvPut } } }),
+}));
+
+// Stub the db client so module load doesn't try to read a real binding.
+vi.mock("@/db/client", () => ({
+  getDb: () => ({
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({
+            limit: async () => [],
+          }),
+        }),
+      }),
+    }),
+  }),
+}));
+
 import {
+  getCachedLeaderboard,
   rankLeaderboardRows,
+  refreshLeaderboardCache,
   sumDeltas,
   validateDelta,
   type LeaderboardInput,
@@ -132,6 +163,44 @@ describe("points: rankLeaderboardRows drops zero-activity users", () => {
     const board = rankLeaderboardRows(input, 10);
     expect(board).toHaveLength(1);
     expect(board[0].verifiedSubmissions).toBe(1);
+  });
+});
+
+describe("points: KV-cached leaderboard", () => {
+  beforeEach(() => {
+    kvStore.clear();
+    kvGet.mockClear();
+    kvPut.mockClear();
+  });
+
+  it("returns the cached rows when fresh", async () => {
+    const cached = { fetchedAt: Date.now(), rows: [{ rank: 1, stakeAddress: "stake1a", totalPoints: 50, verifiedSubmissions: 1, projectsEngaged: 1 }] };
+    kvStore.set("leaderboard:top-100", JSON.stringify(cached));
+    const rows = await getCachedLeaderboard(100);
+    expect(rows).toEqual(cached.rows);
+    // Only the read happened — no recompute write
+    expect(kvPut).not.toHaveBeenCalled();
+  });
+
+  it("recomputes + writes when cache is stale", async () => {
+    const stale = { fetchedAt: Date.now() - 5 * 60_000, rows: [{ rank: 1, stakeAddress: "stake1a", totalPoints: 1, verifiedSubmissions: 1, projectsEngaged: 1 }] };
+    kvStore.set("leaderboard:top-100", JSON.stringify(stale));
+    await getCachedLeaderboard(100);
+    expect(kvPut).toHaveBeenCalledOnce();
+    const written = JSON.parse(kvStore.get("leaderboard:top-100")!);
+    expect(written.fetchedAt).toBeGreaterThan(stale.fetchedAt);
+  });
+
+  it("recomputes + writes when cache is empty", async () => {
+    await getCachedLeaderboard(100);
+    expect(kvPut).toHaveBeenCalledOnce();
+  });
+
+  it("refreshLeaderboardCache writes fresh rows + fetchedAt", async () => {
+    await refreshLeaderboardCache(100);
+    const v = JSON.parse(kvStore.get("leaderboard:top-100")!);
+    expect(typeof v.fetchedAt).toBe("number");
+    expect(Array.isArray(v.rows)).toBe(true);
   });
 });
 

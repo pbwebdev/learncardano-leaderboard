@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPointsLeaderboard } from "@/lib/points";
+import { getCachedLeaderboard } from "@/lib/points";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const metadata = {
 };
 
 export default async function LeaderboardPage() {
-  const rows = await getPointsLeaderboard(100);
+  const rows = await getCachedLeaderboard(100);
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <h1 className="text-3xl font-bold tracking-tight">Leaderboard</h1>

@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/client";
 import { pointsLedger, submissions, tasks, users } from "@/db/schema";
 
@@ -154,6 +155,74 @@ export async function getPointsLeaderboard(limit = 100): Promise<LeaderboardRow[
     }))
     .filter((r) => r.totalPoints !== 0 || r.verifiedSubmissions > 0)
     .map((r, i) => ({ rank: i + 1, ...r }));
+}
+
+// ---------------- KV cache for the public leaderboard ----------------
+
+const KV_LEADERBOARD_PREFIX = "leaderboard:top-";
+// Read-side staleness backstop. The hourly cron refreshes every 60min, so a
+// 60s read-side TTL means the page never serves data older than 60s + cron
+// drift.
+const READ_FRESHNESS_MS = 60_000;
+// Write TTL — long enough that stale cron writes can't displace fresh ones,
+// short enough that cache entries auto-evict if the cron stops running.
+const WRITE_TTL_SECONDS = 65 * 60;
+
+interface CachedLeaderboard {
+  fetchedAt: number;
+  rows: LeaderboardRow[];
+}
+
+interface KvLike {
+  get<T = unknown>(key: string, type: "json"): Promise<T | null>;
+  put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
+}
+
+function getKv(): KvLike | null {
+  try {
+    const { env } = getCloudflareContext();
+    return ((env as unknown as { KV?: KvLike }).KV) ?? null;
+  } catch {
+    // No Cloudflare context (e.g. unit tests that didn't mock it). Caller
+    // falls back to the uncached path.
+    return null;
+  }
+}
+
+/**
+ * Get the top-N leaderboard rows from KV when fresh, else compute + write.
+ * The hourly cron also refreshes; this is the read-side backstop so a cold
+ * cache after eviction doesn't hammer D1 from page renders.
+ */
+export async function getCachedLeaderboard(limit = 100): Promise<LeaderboardRow[]> {
+  const kv = getKv();
+  if (!kv) return getPointsLeaderboard(limit);
+  const key = `${KV_LEADERBOARD_PREFIX}${limit}`;
+  const hit = await kv.get<CachedLeaderboard>(key, "json");
+  if (hit && typeof hit.fetchedAt === "number" && Date.now() - hit.fetchedAt < READ_FRESHNESS_MS) {
+    return hit.rows;
+  }
+  const rows = await getPointsLeaderboard(limit);
+  await kv.put(key, JSON.stringify({ fetchedAt: Date.now(), rows }), { expirationTtl: WRITE_TTL_SECONDS });
+  return rows;
+}
+
+/**
+ * Invalidate + recompute the cached leaderboard. Called by the hourly cron
+ * tick (`5 * * * *`). Safe to call any time.
+ */
+export async function refreshLeaderboardCache(limit = 100): Promise<void> {
+  const kv = getKv();
+  if (!kv) {
+    // No KV bound — recompute purely for the side-effect of warming any
+    // downstream caches. In production this branch shouldn't hit.
+    await getPointsLeaderboard(limit);
+    return;
+  }
+  const rows = await getPointsLeaderboard(limit);
+  const key = `${KV_LEADERBOARD_PREFIX}${limit}`;
+  await kv.put(key, JSON.stringify({ fetchedAt: Date.now(), rows }), { expirationTtl: WRITE_TTL_SECONDS });
+  console.log("[leaderboard] kv cache refreshed", { limit, rowCount: rows.length });
 }
 
 /**
