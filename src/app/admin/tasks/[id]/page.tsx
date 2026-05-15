@@ -11,9 +11,16 @@ import { TaskFormFields } from "../task-form";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function AdminTaskEditPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdminTaskEditPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string; created?: string }>;
+}) {
   await requireAdmin();
   const { id } = await params;
+  const { saved, created } = await searchParams;
   const db = getDb();
   const rows = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
   const task = rows[0];
@@ -22,6 +29,22 @@ export default async function AdminTaskEditPage({ params }: { params: Promise<{ 
 
   return (
     <main>
+      {(saved || created) && (
+        <div
+          role="status"
+          className="mb-4 rounded-[--radius-md] border border-[color:var(--status-green)]/40 bg-[color:var(--status-green-bg)] p-3 text-sm text-[color:var(--status-green)]"
+        >
+          <p className="font-semibold">
+            {created ? "Task created" : "Task saved"}
+          </p>
+          <p className="mt-1 opacity-90">
+            {task.taskType} · {task.title} · status <code>{task.status}</code>
+            {task.status === "active" && task.taskType !== "manual_review" && task.taskType !== "bounty_completion" && (
+              <> — submissions will route through the verifier within ~10 seconds.</>
+            )}
+          </p>
+        </div>
+      )}
       <header className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold">Edit task</h2>
         <Link className="text-sm underline" href="/admin/tasks">All tasks</Link>

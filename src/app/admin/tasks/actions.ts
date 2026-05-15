@@ -155,7 +155,7 @@ export async function createTask(formData: FormData): Promise<void> {
     oldValue: null,
     newValue: { projectId, title, taskType, status },
   });
-  redirect(`/admin/tasks/${id}`);
+  redirect(`/admin/tasks/${id}?created=1`);
 }
 
 export async function updateTask(formData: FormData): Promise<void> {
@@ -199,4 +199,5 @@ export async function updateTask(formData: FormData): Promise<void> {
     oldValue: { title: existing.title, status: existing.status, points: existing.points },
     newValue: { title: changes.title, status: changes.status, points: changes.points },
   });
+  redirect(`/admin/tasks/${id}?saved=1`);
 }
