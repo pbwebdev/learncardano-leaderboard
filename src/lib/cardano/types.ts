@@ -70,6 +70,44 @@ export type TxIo = {
   amount: Array<{ unit: string; quantity: string }>;
 };
 
+/**
+ * Plutus script interaction surfaced on a tx. One entry per redeemer in the
+ * tx — i.e. a script-locked input being spent, a minting policy being
+ * exercised, a stake/vote/propose certificate using a script witness, etc.
+ *
+ * Provider variance: Koios surfaces these directly under `plutus_contracts`
+ * including the decoded redeemer when it can. Blockfrost surfaces them via
+ * `/txs/{hash}/redeemers` and only gives a redeemer_data_hash — the
+ * constructor / cbor are NOT exposed by Blockfrost, so `redeemerConstructor`
+ * and `redeemerCborHex` will be undefined on Blockfrost-sourced TxInfo.
+ */
+export type PlutusContract = {
+  scriptHash: string;     // lowercase hex
+  redeemerTag?: "spend" | "mint" | "cert" | "reward" | "vote" | "propose";
+  redeemerConstructor?: number;
+  redeemerCborHex?: string;
+  datumHash?: string;     // lowercase hex
+  datumCborHex?: string;
+};
+
+export type MintedAsset = {
+  policyId: string;       // lowercase hex
+  assetName: string;      // lowercase hex
+  quantity: number;       // signed; negative on burn
+};
+
+export type RefScriptUtxo = {
+  txHash: string;
+  outputIndex: number;
+  scriptHash: string;     // lowercase hex
+};
+
+export type OutputDatum = {
+  outputIndex: number;
+  datumHash: string | null;       // lowercase hex
+  inlineDatumCborHex: string | null;
+};
+
 export type TxInfo = {
   hash: string;
   block_hash: string | null;
@@ -80,6 +118,13 @@ export type TxInfo = {
   outputs: TxIo[];
   // Stake credentials touched by this tx (withdrawal / delegation / etc.).
   stake_addresses: string[];
+  // Optional advanced fields surfaced when the provider supports them. All
+  // hex values are lower-cased inside the provider module so verifiers can
+  // compare without re-normalising.
+  plutusContracts?: PlutusContract[];
+  mintedAssets?: MintedAsset[];
+  referenceInputs?: RefScriptUtxo[];
+  outputDatums?: OutputDatum[];
 };
 
 export type TxStatus = {

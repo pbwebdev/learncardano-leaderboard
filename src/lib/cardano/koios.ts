@@ -257,14 +257,43 @@ type KoiosTxIoOut = {
   asset_list?: Array<{ policy_id: string; asset_name: string; quantity: string }>;
 };
 
+type KoiosTxIoFull = KoiosTxIoOut & {
+  tx_hash?: string;
+  tx_index?: number;
+  inline_datum?: { bytes?: string; value?: unknown } | null;
+  datum_hash?: string | null;
+  reference_script?: { hash?: string } | null;
+};
+
+type KoiosPlutusContract = {
+  address?: string;
+  script_hash?: string;
+  valid_contract?: boolean;
+  redeemer?: {
+    purpose?: string;
+    fee?: string;
+    unit?: { mem?: number; steps?: number };
+    datum?: { value?: unknown; bytes?: string; hash?: string };
+  };
+};
+
+type KoiosAssetsMinted = {
+  policy_id: string;
+  asset_name: string;
+  quantity: string;
+};
+
 type KoiosTxInfoRow = {
   tx_hash: string;
   block_hash: string | null;
   block_height: number | null;
   block_time: number | null;
   num_confirmations: number;
-  inputs?: KoiosTxIoOut[];
-  outputs?: KoiosTxIoOut[];
+  inputs?: KoiosTxIoFull[];
+  outputs?: KoiosTxIoFull[];
+  plutus_contracts?: KoiosPlutusContract[];
+  assets_minted?: KoiosAssetsMinted[];
+  reference_inputs?: KoiosTxIoFull[];
 };
 
 function normaliseIo(row: KoiosTxIoOut) {
@@ -278,6 +307,81 @@ function normaliseIo(row: KoiosTxIoOut) {
     stake_address: row.stake_addr ?? null,
     amount,
   };
+}
+
+/**
+ * Decode the leading top-level Plutus constructor index from a redeemer
+ * CBOR hex string. Plutus Data constructors are encoded as CBOR tags 121
+ * (constructor 0), 122 (1), ..., 127 (6), or for constructor >= 7 as
+ * tag 102 followed by an array `[constructorIndex, fields]`, or for
+ * "alternative" constructors as tag 1280 + (n - 7) where n >= 7.
+ *
+ * This is intentionally a ~30 LoC decoder — NOT a full CBOR lib. It only
+ * looks at the leading bytes to pull out the constructor index, then
+ * returns undefined for anything it can't recognise. Verifiers treat
+ * undefined as "provider data missing" and surface needs_review.
+ */
+function decodeTopLevelConstructor(hex: string): number | undefined {
+  if (!hex) return undefined;
+  const clean = hex.toLowerCase().replace(/^0x/, "");
+  if (clean.length < 2 || !/^[0-9a-f]+$/.test(clean)) return undefined;
+  const b0 = parseInt(clean.slice(0, 2), 16);
+  // Major type 6 (tag) — initial byte 0xC0..0xDB.
+  if (b0 < 0xc0 || b0 > 0xdb) return undefined;
+  const ai = b0 & 0x1f; // additional info
+  let tag: number | undefined;
+  let cursor = 2;
+  if (ai < 24) {
+    tag = ai;
+  } else if (ai === 24) {
+    if (clean.length < 4) return undefined;
+    tag = parseInt(clean.slice(2, 4), 16);
+    cursor = 4;
+  } else if (ai === 25) {
+    if (clean.length < 6) return undefined;
+    tag = parseInt(clean.slice(2, 6), 16);
+    cursor = 6;
+  } else if (ai === 26) {
+    if (clean.length < 10) return undefined;
+    tag = parseInt(clean.slice(2, 10), 16);
+    cursor = 10;
+  } else {
+    return undefined;
+  }
+  if (tag == null) return undefined;
+  // Compact constructors 0..6 live at tags 121..127.
+  if (tag >= 121 && tag <= 127) return tag - 121;
+  // Constructors >= 7 use CBOR tag 102 with payload [constructorIndex, fields].
+  if (tag === 102) {
+    // Skip the array marker (major type 4, initial byte 0x80..0x9b).
+    if (clean.length < cursor + 2) return undefined;
+    const arrByte = parseInt(clean.slice(cursor, cursor + 2), 16);
+    if (arrByte < 0x80 || arrByte > 0x9b) return undefined;
+    let p = cursor + 2;
+    const arrAi = arrByte & 0x1f;
+    if (arrAi >= 24 && arrAi <= 27) {
+      const skip = [1, 2, 4, 8][arrAi - 24];
+      p += skip * 2;
+    }
+    if (clean.length < p + 2) return undefined;
+    // Read the first array element — an unsigned int (major type 0).
+    const c0 = parseInt(clean.slice(p, p + 2), 16);
+    if (c0 > 0x1b) return undefined;
+    const cAi = c0 & 0x1f;
+    if (cAi < 24) return cAi;
+    if (cAi === 24 && clean.length >= p + 4) return parseInt(clean.slice(p + 2, p + 4), 16);
+    if (cAi === 25 && clean.length >= p + 6) return parseInt(clean.slice(p + 2, p + 6), 16);
+    if (cAi === 26 && clean.length >= p + 10) return parseInt(clean.slice(p + 2, p + 10), 16);
+    return undefined;
+  }
+  return undefined;
+}
+
+function koiosPurposeToTag(p: string | undefined): import("./types").PlutusContract["redeemerTag"] | undefined {
+  if (!p) return undefined;
+  const v = p.toLowerCase();
+  if (v === "spend" || v === "mint" || v === "cert" || v === "reward" || v === "vote" || v === "propose") return v;
+  return undefined;
 }
 
 export async function getTxInfo(txHash: string): Promise<TxInfo | null> {
@@ -302,6 +406,44 @@ export async function getTxInfo(txHash: string): Promise<TxInfo | null> {
     ),
   );
 
+  // Advanced fields (optional, all hex lower-cased for verifier comparison).
+  const plutusContracts: import("./types").PlutusContract[] = (r.plutus_contracts ?? [])
+    .filter((c) => c?.script_hash)
+    .map((c) => {
+      const cborHex = c.redeemer?.datum?.bytes?.toLowerCase();
+      const constructor = cborHex ? decodeTopLevelConstructor(cborHex) : undefined;
+      const out: import("./types").PlutusContract = {
+        scriptHash: (c.script_hash as string).toLowerCase(),
+      };
+      const tag = koiosPurposeToTag(c.redeemer?.purpose);
+      if (tag) out.redeemerTag = tag;
+      if (constructor !== undefined) out.redeemerConstructor = constructor;
+      if (cborHex) out.redeemerCborHex = cborHex;
+      const dHash = c.redeemer?.datum?.hash;
+      if (dHash) out.datumHash = dHash.toLowerCase();
+      return out;
+    });
+
+  const mintedAssets: import("./types").MintedAsset[] = (r.assets_minted ?? []).map((a) => ({
+    policyId: a.policy_id.toLowerCase(),
+    assetName: (a.asset_name ?? "").toLowerCase(),
+    quantity: Number(a.quantity),
+  }));
+
+  const referenceInputs: import("./types").RefScriptUtxo[] = (r.reference_inputs ?? [])
+    .filter((ri) => ri?.reference_script?.hash && ri.tx_hash)
+    .map((ri) => ({
+      txHash: (ri.tx_hash as string).toLowerCase(),
+      outputIndex: ri.tx_index ?? 0,
+      scriptHash: (ri.reference_script!.hash as string).toLowerCase(),
+    }));
+
+  const outputDatums: import("./types").OutputDatum[] = (r.outputs ?? []).map((o, idx) => ({
+    outputIndex: o.tx_index ?? idx,
+    datumHash: o.datum_hash ? o.datum_hash.toLowerCase() : null,
+    inlineDatumCborHex: o.inline_datum?.bytes ? o.inline_datum.bytes.toLowerCase() : null,
+  }));
+
   const info: TxInfo = {
     hash: r.tx_hash,
     block_hash: r.block_hash,
@@ -311,6 +453,10 @@ export async function getTxInfo(txHash: string): Promise<TxInfo | null> {
     inputs,
     outputs,
     stake_addresses,
+    plutusContracts,
+    mintedAssets,
+    referenceInputs,
+    outputDatums,
   };
   if (info.num_confirmations > 0) {
     await env.KV.put(longKey, JSON.stringify(info), { expirationTtl: TTL_TX_INFO });

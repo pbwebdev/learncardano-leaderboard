@@ -194,19 +194,109 @@ type BfTx = {
   block_time: number;
 };
 
+type BfTxUtxoOutput = {
+  address: string;
+  amount: Array<{ unit: string; quantity: string }>;
+  output_index?: number;
+  data_hash?: string | null;
+  inline_datum?: string | null;
+  reference_script_hash?: string | null;
+};
+
+type BfTxUtxoInput = {
+  address: string;
+  amount: Array<{ unit: string; quantity: string }>;
+  tx_hash?: string;
+  output_index?: number;
+  data_hash?: string | null;
+  inline_datum?: string | null;
+  reference?: boolean;
+  reference_script_hash?: string | null;
+};
+
 type BfTxUtxos = {
   hash: string;
-  inputs: Array<{ address: string; amount: Array<{ unit: string; quantity: string }> }>;
-  outputs: Array<{ address: string; amount: Array<{ unit: string; quantity: string }> }>;
+  inputs: BfTxUtxoInput[];
+  outputs: BfTxUtxoOutput[];
 };
+
+type BfTxRedeemer = {
+  tx_index: number;
+  purpose: string;
+  script_hash: string;
+  redeemer_data_hash?: string;
+  datum_hash?: string;
+};
+
+type BfTxMint = {
+  unit?: string;
+  policy_id?: string;
+  asset_name?: string | null;
+  quantity: string;
+  action?: "minted" | "burned";
+};
+
+function bfPurposeToTag(p: string | undefined): import("./types").PlutusContract["redeemerTag"] | undefined {
+  if (!p) return undefined;
+  const v = p.toLowerCase();
+  if (v === "spend" || v === "mint" || v === "cert" || v === "reward" || v === "vote" || v === "propose") return v;
+  return undefined;
+}
 
 export async function getTxInfo(txHash: string): Promise<TxInfo | null> {
   return cached(`bf:tx_info:${txHash}`, async () => {
-    const [tx, utxos] = await Promise.all([
+    const [tx, utxos, redeemers, mints] = await Promise.all([
       blockfrostGet<BfTx>(`/txs/${txHash}`),
       blockfrostGet<BfTxUtxos>(`/txs/${txHash}/utxos`),
+      blockfrostGet<BfTxRedeemer[]>(`/txs/${txHash}/redeemers`),
+      blockfrostGet<BfTxMint[]>(`/txs/${txHash}/mints`),
     ]);
     if (!tx || !utxos) return null;
+
+    const plutusContracts: import("./types").PlutusContract[] = (redeemers ?? [])
+      .filter((r) => r?.script_hash)
+      .map((r) => {
+        const out: import("./types").PlutusContract = {
+          scriptHash: r.script_hash.toLowerCase(),
+        };
+        const tag = bfPurposeToTag(r.purpose);
+        if (tag) out.redeemerTag = tag;
+        // Blockfrost only exposes redeemer_data_hash, not the CBOR or
+        // constructor. Verifiers tolerate undefined and surface
+        // needs_review with reason `provider_data_missing:...`.
+        if (r.datum_hash) out.datumHash = r.datum_hash.toLowerCase();
+        return out;
+      });
+
+    const mintedAssets: import("./types").MintedAsset[] = (mints ?? []).map((m) => {
+      let policyId = (m.policy_id ?? "").toLowerCase();
+      let assetName = (m.asset_name ?? "").toLowerCase();
+      if (!policyId && m.unit) {
+        policyId = m.unit.slice(0, 56).toLowerCase();
+        assetName = m.unit.slice(56).toLowerCase();
+      }
+      const qty = Number(m.quantity);
+      return {
+        policyId,
+        assetName,
+        quantity: m.action === "burned" && qty > 0 ? -qty : qty,
+      };
+    });
+
+    const referenceInputs: import("./types").RefScriptUtxo[] = (utxos.inputs ?? [])
+      .filter((i) => i.reference === true && i.reference_script_hash && i.tx_hash)
+      .map((i) => ({
+        txHash: (i.tx_hash as string).toLowerCase(),
+        outputIndex: i.output_index ?? 0,
+        scriptHash: (i.reference_script_hash as string).toLowerCase(),
+      }));
+
+    const outputDatums: import("./types").OutputDatum[] = (utxos.outputs ?? []).map((o, idx) => ({
+      outputIndex: o.output_index ?? idx,
+      datumHash: o.data_hash ? o.data_hash.toLowerCase() : null,
+      inlineDatumCborHex: o.inline_datum ? o.inline_datum.toLowerCase() : null,
+    }));
+
     return {
       hash: tx.hash,
       block_hash: tx.block,
@@ -216,9 +306,15 @@ export async function getTxInfo(txHash: string): Promise<TxInfo | null> {
       // uses /tx/status or /tx/latest_block for that. Treat presence of a
       // block as >= 1 confirmation.
       num_confirmations: tx.block_height ? 1 : 0,
-      inputs: utxos.inputs.map((i) => ({ address: i.address, stake_address: null, amount: i.amount })),
+      inputs: (utxos.inputs ?? [])
+        .filter((i) => i.reference !== true)
+        .map((i) => ({ address: i.address, stake_address: null, amount: i.amount })),
       outputs: utxos.outputs.map((o) => ({ address: o.address, stake_address: null, amount: o.amount })),
       stake_addresses: [],
+      plutusContracts,
+      mintedAssets,
+      referenceInputs,
+      outputDatums,
     };
   }, TTL_TX_INFO);
 }
