@@ -53,12 +53,10 @@ describe("verification dispatcher: phase 2 routing", () => {
     expect(r2.status).toBe("rejected");
   });
 
-  it("throws unknown_task_type for unimplemented phase 3+ types", async () => {
-    // youtube_comment and bounty_completion still throw — x_tweet / x_retweet
-    // route through the social verifier from Phase 3.
-    for (const t of ["youtube_comment", "bounty_completion"]) {
-      await expect(verify(baseOpts({ taskType: t }))).rejects.toThrow(/unknown_task_type/);
-    }
+  it("throws unknown_task_type for phase 4+ (webhook-only) types", async () => {
+    // x_tweet, x_retweet, youtube_comment now route through Phase 3 verifiers.
+    // bounty_completion still has no dispatcher route — it's webhook-driven.
+    await expect(verify(baseOpts({ taskType: "bounty_completion" }))).rejects.toThrow(/unknown_task_type/);
   });
 
   it("throws unknown_task_type for completely unknown discriminators", async () => {

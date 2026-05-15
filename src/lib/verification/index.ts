@@ -4,6 +4,7 @@ import { verifyDRepRegistered } from "./drep-activity";
 import { verifyTxHash } from "./tx-hash";
 import { verifyGovernanceVote } from "./governance";
 import { verifyXRetweet, verifyXTweet } from "./social-x";
+import { verifyYouTubeComment } from "./social-youtube";
 
 /**
  * Verification dispatcher — reads `task.taskType`, routes to the right
@@ -158,8 +159,14 @@ export async function verify(opts: VerifyOpts): Promise<VerifierResult> {
         },
       });
     case "youtube_comment":
-      // YouTube verifier wired in the next commit.
-      throw new Error(`unknown_task_type:${opts.taskType}:phase3_pending`);
+      return verifyYouTubeComment({
+        taskConfig: opts.taskConfig,
+        user: {
+          stakeAddress: opts.user.stakeAddress,
+          youtubeChannelId: opts.user.youtubeChannelId,
+          youtubeAccessTokenEnc: opts.user.youtubeAccessTokenEnc,
+        },
+      });
     case "bounty_completion":
       throw new Error(`unknown_task_type:${opts.taskType}:phase4`);
     default:
