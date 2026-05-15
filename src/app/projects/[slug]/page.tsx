@@ -7,6 +7,8 @@ import { getDb } from "@/db/client";
 import { clickEvents, projects, submissions, tasks, users } from "@/db/schema";
 import { renderMarkdown } from "@/lib/markdown";
 import { resolvePersonalReferralLink } from "@/lib/referral-links";
+import { getBatchSummaryForProject, shouldShowPayoutsVerifiedBadge } from "@/lib/payouts-badge";
+import { PayoutsVerifiedBadge } from "@/components/payouts-verified-badge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +70,9 @@ export default async function ProjectDetailPage({
 
   const descriptionHtml = renderMarkdown(project.description);
 
+  const batchSummary = await getBatchSummaryForProject(slug);
+  const showPayoutsBadge = shouldShowPayoutsVerifiedBadge(batchSummary);
+
   // Phase 3: per-user referral link. Only when the project has a
   // referralUrl configured. Resolution is lazy + non-fatal; if Dub
   // isn't configured, `shortUrl` is null and we fall back to the
@@ -106,7 +111,10 @@ export default async function ProjectDetailPage({
         </div>
       )}
       <p className="text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">{project.category}</p>
-      <h1 className="mt-1 text-3xl font-bold tracking-tight">{project.name}</h1>
+      <div className="mt-1 flex flex-wrap items-baseline gap-3">
+        <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+        {showPayoutsBadge && <PayoutsVerifiedBadge />}
+      </div>
       {project.websiteUrl && (
         <p className="mt-2 text-sm">
           <a href={project.websiteUrl} target="_blank" rel="noopener noreferrer" className="underline text-[color:var(--accent-info)]">{project.websiteUrl.replace(/^https?:\/\//, "")}</a>
