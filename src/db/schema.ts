@@ -1,10 +1,15 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 /**
- * Phase 0 schema — users + audit log only. Subsequent phases add projects,
- * tasks, submissions, points_ledger, partner_payout_batches, tracked_links,
- * click_events. See CLAUDE.md § Data model for the full target.
+ * Phase 0 schema landed users + audit_log. Phase 1 extends with:
+ *   - projects        partner project metadata
+ *   - tasks           per-project tasks (Phase 1 only ships manual_review)
+ *   - submissions     user submissions + admin review state
+ *   - points_ledger   append-only points history (delta rows; never UPDATE)
+ *
+ * Later phases will add: partner_payout_batches, tracked_links, click_events.
+ * See CLAUDE.md § Data model.
  */
 
 export const users = sqliteTable("users", {
@@ -53,3 +58,122 @@ export const auditLog = sqliteTable("audit_log", {
   oldValue: text("old_value"),
   newValue: text("new_value"),
 });
+
+/**
+ * Partner projects. `id` is the human-readable slug used in URLs (e.g.
+ * `/projects/minswap`). Slug edits are blocked once any submission exists
+ * for a task under this project — application-level guard in the admin
+ * action.
+ */
+export const projects = sqliteTable("projects", {
+  id: text("id").primaryKey(), // slug
+  name: text("name").notNull(),
+  logoR2Key: text("logo_r2_key"),
+  description: text("description").notNull().default(""), // markdown
+  websiteUrl: text("website_url"),
+  referralUrl: text("referral_url"),
+  dubLinkId: text("dub_link_id"),     // populated in Phase 3
+  shortUrl: text("short_url"),        // populated in Phase 3
+  category: text("category").notNull().default("infra"), // 'defi' | 'nft' | 'governance' | 'infra' | 'education' | 'gaming'
+  status: text("status").notNull().default("draft"), // 'draft' | 'active' | 'upcoming' | 'ended'
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+  // Anything before this is ineligible for on-chain tasks (Phase 2+).
+  campaignStartDate: integer("campaign_start_date", { mode: "timestamp_ms" }),
+});
+
+/**
+ * Tasks per project. `taskType` is a discriminator the verifier dispatcher
+ * reads; Phase 1 only enables `manual_review`. The admin UI shows all 10
+ * types in a dropdown but disables the non-manual ones (greyed Phase 2).
+ *
+ * `taskConfig` is task-type-specific JSON. For manual_review:
+ *   { instructions: string, requiresProofUrl?: boolean, requiresScreenshot?: boolean }
+ */
+export const tasks = sqliteTable("tasks", {
+  id: text("id").primaryKey(), // uuid
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id),
+  title: text("title").notNull(),
+  descriptionMd: text("description_md").notNull().default(""),
+  taskType: text("task_type").notNull(), // 'manual_review' | 'pool_delegation' | ...
+  taskConfig: text("task_config", { mode: "json" }).$type<unknown>(),
+  verificationMethod: text("verification_method").notNull().default("manual"),
+  // 'auto_onchain' | 'auto_oauth' | 'auto_webhook' | 'manual'
+  points: integer("points").notNull().default(0),
+  tokenReward: text("token_reward", { mode: "json" }).$type<unknown>(),
+  startsAt: integer("starts_at", { mode: "timestamp_ms" }),
+  endsAt: integer("ends_at", { mode: "timestamp_ms" }),
+  // usually 1; 0 means "unlimited" but Phase 1 default is 1.
+  maxCompletionsPerUser: integer("max_completions_per_user").notNull().default(1),
+  totalCompletionCap: integer("total_completion_cap").notNull().default(0), // 0 = no cap
+  displayOrder: integer("display_order").notNull().default(0),
+  status: text("status").notNull().default("draft"), // 'draft' | 'active' | 'paused' | 'ended'
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+}, (t) => ({
+  byProject: index("tasks_project_idx").on(t.projectId),
+  byStatus: index("tasks_status_idx").on(t.status),
+}));
+
+/**
+ * Submissions. `(userId, taskId, txHash)` is UNIQUE — same tx can't be
+ * claimed for the same task twice. txHash is nullable in Phase 1 (manual
+ * review). SQLite's UNIQUE treats NULLs as distinct, so multiple manual
+ * submissions for the same (user, task) are allowed at the index level;
+ * the application-level check for `maxCompletionsPerUser` enforces the
+ * single-completion rule for manual_review tasks. Documented in
+ * docs/admin-runbook.md.
+ */
+export const submissions = sqliteTable("submissions", {
+  id: text("id").primaryKey(), // uuid (crypto.randomUUID)
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.stakeAddress),
+  taskId: text("task_id")
+    .notNull()
+    .references(() => tasks.id),
+  status: text("status").notNull().default("pending"),
+  // 'pending' | 'verifying' | 'verified' | 'rejected' | 'paid' | 'reward_verified'
+  txHash: text("tx_hash"),
+  proofR2Key: text("proof_r2_key"),
+  proofUrl: text("proof_url"),
+  oauthPayload: text("oauth_payload", { mode: "json" }).$type<unknown>(),
+  rejectionReason: text("rejection_reason"),
+  submittedAt: integer("submitted_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+  verifiedAt: integer("verified_at", { mode: "timestamp_ms" }),
+  payoutBatchId: text("payout_batch_id"), // FK populated in Phase 4
+  notes: text("notes"),                   // admin-only
+}, (t) => ({
+  uniqClaim: uniqueIndex("submissions_user_task_tx_unique").on(t.userId, t.taskId, t.txHash),
+  byTask: index("submissions_task_idx").on(t.taskId),
+  byUser: index("submissions_user_idx").on(t.userId),
+  byStatus: index("submissions_status_idx").on(t.status),
+}));
+
+/**
+ * Append-only points ledger. NEVER UPDATE rows. Corrections are new rows
+ * with negative deltas (`reason='clawback'` or `'admin_adjust'`).
+ */
+export const pointsLedger = sqliteTable("points_ledger", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.stakeAddress),
+  delta: integer("delta").notNull(),
+  reason: text("reason").notNull(), // 'task_verified' | 'referral_bonus' | 'admin_adjust' | 'clawback'
+  submissionId: text("submission_id"), // nullable FK to submissions.id
+  note: text("note"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+}, (t) => ({
+  byUser: index("points_ledger_user_idx").on(t.userId),
+  bySubmission: index("points_ledger_submission_idx").on(t.submissionId),
+}));
