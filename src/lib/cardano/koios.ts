@@ -5,6 +5,8 @@ import type {
   AccountInfo,
   DRepInfo,
   DRepMetadata,
+  DRepVote,
+  EpochInfo,
   PoolInfo,
   TxInfo,
   TxStatus,
@@ -180,6 +182,7 @@ type KoiosAccountInfoRow = {
   delegated_drep: string | null;
   total_balance: string;
   rewards_available: string;
+  delegation_active_epoch_no?: number | null;
 };
 
 export async function getAccountInfo(stakeAddress: string): Promise<AccountInfo | null> {
@@ -196,6 +199,7 @@ export async function getAccountInfo(stakeAddress: string): Promise<AccountInfo 
       delegated_pool: r.delegated_pool,
       delegated_drep: r.delegated_drep,
       registered: r.status === "registered",
+      delegation_active_epoch_no: r.delegation_active_epoch_no ?? null,
     };
   }, TTL_ACCOUNT_INFO);
 }
@@ -350,6 +354,57 @@ export async function getPoolInfo(poolId: string): Promise<PoolInfo | null> {
       meta_url: r.meta_url ?? null,
     };
   }, TTL_POOL_INFO);
+}
+
+// ---------- Epoch endpoint ----------
+
+const TTL_EPOCH = 60; // 1 min — epoch boundaries are 5 days apart but we want
+                      // fresh enough that verifiers don't make decisions on a
+                      // multi-hour stale value.
+
+type KoiosTipRow = { epoch_no: number; block_time: number };
+
+export async function getCurrentEpoch(): Promise<EpochInfo | null> {
+  return cached("koios:tip", async () => {
+    // /tip returns the latest block — block_time is a unix epoch seconds value
+    // that we surface as a coarse "epoch start time" approximation. Verifiers
+    // that need the precise epoch boundary should call /epoch_info, which we
+    // don't currently need.
+    const rows = await koiosPost<KoiosTipRow[]>("/tip", {});
+    const r = rows?.[0];
+    if (!r) return null;
+    return { epoch_no: r.epoch_no, start_time: r.block_time };
+  }, TTL_EPOCH);
+}
+
+// ---------- Governance vote list (filtered to a DRep) ----------
+
+const TTL_DREP_VOTES = 60 * 5;
+
+type KoiosDRepVoteRow = {
+  proposal_tx_hash: string;
+  proposal_index: number;
+  vote: string;
+  block_time?: number | null;
+};
+
+export async function getDRepVotes(drepId: string): Promise<DRepVote[] | null> {
+  return cached(`koios:drep_votes:${drepId}`, async () => {
+    // /vote_list?_voter_role=drep&_voter_id=<drepId> — Koios surfaces an
+    // array of vote rows. We pass through proposal_tx_hash + vote choice
+    // unchanged; callers compare against `config.actionTxHash`.
+    const rows = await koiosPost<KoiosDRepVoteRow[]>("/vote_list", {
+      _voter_role: "drep",
+      _voter_id: drepId,
+    });
+    if (!rows) return null;
+    return rows.map((r) => ({
+      proposal_tx_hash: r.proposal_tx_hash,
+      proposal_index: r.proposal_index,
+      vote: r.vote,
+      block_time: r.block_time ?? null,
+    }));
+  }, TTL_DREP_VOTES);
 }
 
 // ---------- Utility ----------

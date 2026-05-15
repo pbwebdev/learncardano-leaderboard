@@ -5,6 +5,8 @@ import type {
   AccountInfo,
   DRepInfo,
   DRepMetadata,
+  DRepVote,
+  EpochInfo,
   PoolInfo,
   TxInfo,
   TxStatus,
@@ -72,6 +74,7 @@ type BfAccount = {
   withdrawable_amount: string;
   pool_id: string | null;
   drep_id: string | null;
+  active_epoch?: number | null;
 };
 
 export async function getAccountInfo(stakeAddress: string): Promise<AccountInfo | null> {
@@ -85,6 +88,7 @@ export async function getAccountInfo(stakeAddress: string): Promise<AccountInfo 
       delegated_pool: r.pool_id,
       delegated_drep: r.drep_id,
       registered: r.active,
+      delegation_active_epoch_no: r.active_epoch ?? null,
     };
   }, TTL_ACCOUNT_INFO);
 }
@@ -250,4 +254,45 @@ export async function getPoolInfo(poolId: string): Promise<PoolInfo | null> {
       meta_url: null,
     };
   }, TTL_POOL_INFO);
+}
+
+// ---------- Epoch ----------
+
+const TTL_EPOCH = 60;
+
+type BfEpochLatest = { epoch: number; start_time: number };
+
+export async function getCurrentEpoch(): Promise<EpochInfo | null> {
+  return cached("bf:epoch_latest", async () => {
+    const r = await blockfrostGet<BfEpochLatest>(`/epochs/latest`);
+    if (!r) return null;
+    return { epoch_no: r.epoch, start_time: r.start_time };
+  }, TTL_EPOCH);
+}
+
+// ---------- DRep votes ----------
+
+const TTL_DREP_VOTES = 60 * 5;
+
+type BfDRepVote = {
+  tx_hash: string;
+  cert_index: number;
+  vote: string;
+};
+
+export async function getDRepVotes(drepId: string): Promise<DRepVote[] | null> {
+  return cached(`bf:drep_votes:${drepId}`, async () => {
+    // Blockfrost `/governance/dreps/{drep_id}/votes` returns the vote rows
+    // with the action tx hash + cert index. `block_time` isn't on this
+    // endpoint — verifiers fall back to the action_tx_hash match alone for
+    // the in-window check.
+    const rows = await blockfrostGet<BfDRepVote[]>(`/governance/dreps/${drepId}/votes`);
+    if (!rows) return null;
+    return rows.map((r) => ({
+      proposal_tx_hash: r.tx_hash,
+      proposal_index: r.cert_index,
+      vote: r.vote,
+      block_time: null,
+    }));
+  }, TTL_DREP_VOTES);
 }

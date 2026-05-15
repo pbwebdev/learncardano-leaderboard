@@ -24,12 +24,15 @@ import type {
   AccountInfo,
   DRepInfo,
   DRepMetadata,
+  DRepVote,
+  EpochInfo,
   PoolInfo,
   TxInfo,
+  TxIo,
   TxStatus,
 } from "./types";
 
-export type { AccountAsset, AccountHistoryEntry, AccountInfo, DRepInfo, DRepMetadata, PoolInfo, TxInfo, TxStatus };
+export type { AccountAsset, AccountHistoryEntry, AccountInfo, DRepInfo, DRepMetadata, DRepVote, EpochInfo, PoolInfo, TxInfo, TxIo, TxStatus };
 export { formatAda } from "./koios";
 
 type Provider<T> = (...args: never[]) => Promise<T | null>;
@@ -71,10 +74,16 @@ export function getAccountHistory(stakeAddress: string): Promise<AccountHistoryE
     () => blockfrost.getAccountHistory(stakeAddress));
 }
 
+/**
+ * DRep info. The protocol's authoritative `expired` flag is only on Blockfrost
+ * — Koios exposes `active` but not `expired`. For verifiers that need
+ * `expired === false` semantics (drep_registered, drep_delegation with
+ * mustBeActive), prefer Blockfrost first and fall back to Koios.
+ */
 export function getDRepInfo(drepId: string): Promise<DRepInfo | null> {
   return withFallback("getDRepInfo",
-    () => koios.getDRepInfo(drepId),
-    () => blockfrost.getDRepInfo(drepId));
+    () => blockfrost.getDRepInfo(drepId),
+    () => koios.getDRepInfo(drepId));
 }
 
 export function getDRepMetadata(drepId: string): Promise<DRepMetadata | null> {
@@ -99,6 +108,18 @@ export function getPoolInfo(poolId: string): Promise<PoolInfo | null> {
   return withFallback("getPoolInfo",
     () => koios.getPoolInfo(poolId),
     () => blockfrost.getPoolInfo(poolId));
+}
+
+export function getCurrentEpoch(): Promise<EpochInfo | null> {
+  return withFallback("getCurrentEpoch",
+    () => koios.getCurrentEpoch(),
+    () => blockfrost.getCurrentEpoch());
+}
+
+export function getDRepVotes(drepId: string): Promise<DRepVote[] | null> {
+  return withFallback("getDRepVotes",
+    () => koios.getDRepVotes(drepId),
+    () => blockfrost.getDRepVotes(drepId));
 }
 
 /**

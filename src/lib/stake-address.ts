@@ -1,6 +1,16 @@
 import { bech32 } from "bech32";
 
 /**
+ * Phase 2 extension — DRep ID derivation. Ported from the sibling project's
+ * `src/lib/drep-id.ts` (`drepIdFromRewardAddress`). Used by the
+ * `drep_registered` verifier: given a user's bech32 stake address, return
+ * the CIP-105 key-hash DRep ID they would self-register as.
+ *
+ * Script-credential stake addresses are not supported (script DReps need
+ * different handling; the project's auth flow already rejects them upstream).
+ */
+
+/**
  * Bech32 helpers for Cardano stake addresses (`stake1...` on mainnet).
  *
  * Subset of the sibling project's `src/lib/drep-id.ts` — we only need:
@@ -55,4 +65,28 @@ export function hexToBytes(hex: string): Uint8Array {
 
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Derive a CIP-105 key-hash DRep ID (`drep1...`) from a bech32 stake address.
+ * Throws on script-credential addresses or malformed inputs.
+ */
+export function drepIdFromStakeAddress(stakeBech32: string): string {
+  const { credentialHash } = decodeStakeAddress(stakeBech32);
+  return drepIdFromKeyHash(credentialHash);
+}
+
+/**
+ * Wrap a 28-byte stake credential hash as a bech32 DRep ID. Header byte 0x22
+ * marks a key-hash credential (the only case we currently support).
+ */
+export function drepIdFromKeyHash(keyHash: Uint8Array): string {
+  if (keyHash.length !== 28) {
+    throw new Error(`stake key hash must be 28 bytes, got ${keyHash.length}`);
+  }
+  const payload = new Uint8Array(29);
+  payload[0] = 0x22; // key-hash DRep credential header
+  payload.set(keyHash, 1);
+  const words = bech32.toWords(payload);
+  return bech32.encode("drep", words, 200);
 }

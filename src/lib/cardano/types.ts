@@ -15,6 +15,11 @@ export type AccountInfo = {
   // True when the stake credential is registered on-chain (has delegated at
   // least once). Both providers expose this via slightly different fields.
   registered: boolean;
+  // Epoch in which the current pool delegation became active. Used by the
+  // `pool_delegation` verifier to enforce the tx-age guard (reject if the
+  // delegation predates `task.startsAt`). Nullable when the provider doesn't
+  // surface it.
+  delegation_active_epoch_no?: number | null;
 };
 
 export type AccountAsset = {
@@ -89,4 +94,31 @@ export type PoolInfo = {
   live_stake: string | null;
   ticker: string | null;
   meta_url: string | null;
+};
+
+/**
+ * Current tip epoch + slot. Verifiers use this for tx-age guards and the
+ * `requireActiveLastEpochs` check on `drep_registered`. TTL 1 minute via the
+ * provider modules — fresh enough for any verifier decision.
+ */
+export type EpochInfo = {
+  epoch_no: number;
+  // Unix seconds at which this epoch started. Optional — Blockfrost surfaces
+  // it but Koios doesn't always.
+  start_time?: number | null;
+};
+
+/**
+ * DRep vote record — flattened across providers. Koios `/vote_list` (filtered
+ * to the DRep) and Blockfrost `/governance/dreps/{drep_id}/votes` both
+ * surface the action tx hash + vote choice; we normalise to this shape.
+ */
+export type DRepVote = {
+  // The governance action this vote was cast on. The action is identified by
+  // the tx that PROPOSED it; CIP-1694 calls this the `govActionId`.
+  proposal_tx_hash: string;
+  proposal_index: number;
+  vote: "yes" | "no" | "abstain" | string;
+  // Block time of the vote (unix seconds) when the provider exposes it.
+  block_time?: number | null;
 };
