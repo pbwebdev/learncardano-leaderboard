@@ -85,6 +85,9 @@ export const projects = sqliteTable("projects", {
   description: text("description").notNull().default(""), // markdown
   websiteUrl: text("website_url"),
   referralUrl: text("referral_url"),
+  // Opaque external short-link id from whichever provider we're on.
+  // Column name retained for historical reasons (Dub.co → Short.io swap);
+  // renaming would require a destructive migration. Do not rename.
   dubLinkId: text("dub_link_id"),     // populated in Phase 3
   shortUrl: text("short_url"),        // populated in Phase 3
   category: text("category").notNull().default("infra"), // 'defi' | 'nft' | 'governance' | 'infra' | 'education' | 'gaming'
@@ -232,15 +235,18 @@ export const partnerPayoutBatches = sqliteTable("partner_payout_batches", {
 
 /**
  * Tracked links (Phase 3). Either a project-level link or a per-user
- * referral link. Created via the Dub.co API client and mirrored here so
- * we can resolve click webhooks back to a user and surface click counts
- * on /me and /projects/[slug] without re-calling Dub.
+ * referral link. Created via the Short.io API client and mirrored here
+ * so we can resolve click webhooks back to a user and surface click
+ * counts on /me and /projects/[slug] without re-calling Short.io.
  *
  *   - projectId+userRefCode null → unused
  *   - projectId set, userRefCode null → the project's main referral link
  *   - projectId set, userRefCode set → personalised referral link
  *
  * `dubLinkId` is UNIQUE so webhook deliveries land on exactly one row.
+ * Despite the name it now holds the Short.io link id (opaque external
+ * id from whichever provider we're currently on — see actions.ts /
+ * short-io.ts). Don't rename without a migration.
  */
 export const trackedLinks = sqliteTable("tracked_links", {
   id: text("id").primaryKey(), // uuid
@@ -262,17 +268,21 @@ export const trackedLinks = sqliteTable("tracked_links", {
 }));
 
 /**
- * Click events (Phase 3) ingested from Dub webhooks. Append-only. The
- * webhook handler dedupes via `(tracked_link_id, dub_event_id)` UNIQUE
- * because Dub retries on non-2xx.
+ * Click events (Phase 3) ingested from Short.io webhooks. Append-only.
+ * The webhook handler dedupes via `(tracked_link_id, dub_event_id)`
+ * UNIQUE because Short.io (like Dub before it) retries on non-2xx.
+ *
+ * The `dub_*` column names are historical — they hold the Short.io
+ * event id now. See short-io.ts and webhooks/short-io/route.ts.
  */
 export const clickEvents = sqliteTable("click_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   trackedLinkId: text("tracked_link_id")
     .notNull()
     .references(() => trackedLinks.id),
-  // Stable per-delivery ID from Dub (e.g. payload.click.id). Used for
-  // idempotency — Dub retries on transient failures.
+  // Stable per-delivery ID from the short-link provider. Used for
+  // idempotency — provider retries on transient failures. Column name
+  // retained from the Dub.co → Short.io swap; do not rename.
   dubEventId: text("dub_event_id"),
   // Resolved from trackedLinks.userRefCode if present, else null.
   userId: text("user_id"),
@@ -285,7 +295,7 @@ export const clickEvents = sqliteTable("click_events", {
 }, (t) => ({
   byLink: index("click_events_link_idx").on(t.trackedLinkId),
   byUser: index("click_events_user_idx").on(t.userId),
-  // Dub event IDs are globally unique; constrain per-link in case they ever
-  // collide across links (defensive — Dub docs say they don't).
+  // Provider event IDs are globally unique; constrain per-link as a
+  // belt-and-braces against cross-link collisions.
   uniqEvent: uniqueIndex("click_events_link_event_unique").on(t.trackedLinkId, t.dubEventId),
 }));
