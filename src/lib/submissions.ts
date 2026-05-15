@@ -195,3 +195,42 @@ function isHttpUrl(s: string): boolean {
 export function canEditProjectSlug(opts: { submissionCount: number }): boolean {
   return opts.submissionCount === 0;
 }
+
+/**
+ * Submission statuses that should NEVER be moved back to pending/verified/
+ * rejected by an admin action. Once a submission is in a payout batch
+ * (paid_pending / paid / reward_verified) the partner has either been
+ * sent a CSV or actually paid out — the admin approve/reject UI must
+ * refuse to touch these rows. To reverse, an admin removes the row from
+ * the batch first (which moves it back to `verified`), then operates.
+ *
+ * Used by /admin/submissions actions and /admin/payouts internals.
+ */
+export const PAYOUT_LOCKED_STATUSES: ReadonlyArray<string> = [
+  "paid_pending",
+  "paid",
+  "reward_verified",
+];
+
+export function isPayoutLockedStatus(status: string): boolean {
+  return PAYOUT_LOCKED_STATUSES.includes(status);
+}
+
+/**
+ * Full list of submission statuses recognised by the app. Lifecycle order:
+ *   pending → verifying → verified → (paid_pending → paid → reward_verified)
+ *   pending → verifying → rejected
+ *
+ * paid_pending / paid / reward_verified are Phase 4 additions (see CLAUDE.md
+ * § Submission status enum). Treat them as terminal for admin approve/reject
+ * gating; see PAYOUT_LOCKED_STATUSES.
+ */
+export const ALL_SUBMISSION_STATUSES: ReadonlyArray<string> = [
+  "pending",
+  "verifying",
+  "verified",
+  "rejected",
+  "paid_pending",
+  "paid",
+  "reward_verified",
+];

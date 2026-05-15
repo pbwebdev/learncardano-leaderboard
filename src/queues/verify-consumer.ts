@@ -104,8 +104,13 @@ async function processOne(db: ReturnType<typeof drizzle>, submissionId: string, 
     console.warn("[queue:verify] submission not found:", submissionId);
     return;
   }
-  if (sub.status === "verified" || sub.status === "paid" || sub.status === "reward_verified") {
-    return; // idempotent
+  if (
+    sub.status === "verified" ||
+    sub.status === "paid_pending" ||
+    sub.status === "paid" ||
+    sub.status === "reward_verified"
+  ) {
+    return; // idempotent — including the Phase 4 payout-locked statuses.
   }
   const task = (await db.select().from(tasks).where(eq(tasks.id, sub.taskId)).limit(1))[0];
   if (!task) {

@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { submissions, tasks } from "@/db/schema";
 import { logChange } from "@/lib/audit";
 import { appendPoints } from "@/lib/points";
+import { isPayoutLockedStatus } from "@/lib/submissions";
 
 function readString(fd: FormData, key: string): string {
   return String(fd.get(key) ?? "").trim();
@@ -25,6 +26,12 @@ export async function approveSubmission(formData: FormData): Promise<void> {
   const subRow = (await db.select().from(submissions).where(eq(submissions.id, id)).limit(1))[0];
   if (!subRow) throw new Error("submission_not_found");
   if (subRow.status === "verified") return; // idempotent
+  if (isPayoutLockedStatus(subRow.status)) {
+    // Submission is already in a payout batch — admin must unlink the
+    // batch row first. We refuse here so a stray click can't desync the
+    // ledger from the on-chain payout.
+    throw new Error(`submission_in_payout_batch:${subRow.status}`);
+  }
 
   const taskRow = (await db.select().from(tasks).where(eq(tasks.id, subRow.taskId)).limit(1))[0];
   if (!taskRow) throw new Error("task_not_found");
@@ -62,6 +69,9 @@ export async function rejectSubmission(formData: FormData): Promise<void> {
   const db = getDb();
   const subRow = (await db.select().from(submissions).where(eq(submissions.id, id)).limit(1))[0];
   if (!subRow) throw new Error("submission_not_found");
+  if (isPayoutLockedStatus(subRow.status)) {
+    throw new Error(`submission_in_payout_batch:${subRow.status}`);
+  }
 
   await db
     .update(submissions)

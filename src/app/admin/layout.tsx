@@ -37,6 +37,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <NavLink href="/admin/submissions" className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]" activeClassName="text-[color:var(--fg)] font-medium">Submissions</NavLink>
         <NavLink href="/admin/projects" className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]" activeClassName="text-[color:var(--fg)] font-medium">Projects</NavLink>
         <NavLink href="/admin/tasks" className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]" activeClassName="text-[color:var(--fg)] font-medium">Tasks</NavLink>
+        <NavLink href="/admin/payouts" className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]" activeClassName="text-[color:var(--fg)] font-medium">Payouts</NavLink>
         <NavLink href="/admin/audit" className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]" activeClassName="text-[color:var(--fg)] font-medium">Audit</NavLink>
         <Link href="/" className="ml-auto text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]">
           ← Back to site
