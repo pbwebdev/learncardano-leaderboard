@@ -40,7 +40,50 @@ describe("verification/tx-hash: config parsers", () => {
     expect(parseTxSwapConfig({ scriptAddresses: [SCRIPT], minAdaIn: 1 })).toEqual({
       scriptAddresses: [SCRIPT],
       minAdaIn: 1,
+      requiredScriptHashes: null,
+      requiredRedeemerTag: null,
+      requiredRedeemerConstructor: null,
+      requiredMintedAsset: null,
+      requiredReferenceScriptHash: null,
+      requiredOutputDatumHash: null,
     });
+  });
+
+  it("parses all strict-verification fields and lowercases hex", () => {
+    const SH = "a".repeat(56);
+    const RSH = "b".repeat(56);
+    const DH = "c".repeat(64);
+    const out = parseTxSwapConfig({
+      scriptAddresses: [SCRIPT],
+      requiredScriptHashes: [SH.toUpperCase()],
+      requiredRedeemerTag: "Spend",
+      requiredRedeemerConstructor: 0,
+      requiredMintedAsset: { policyId: POLICY.toUpperCase(), assetName: "AD4D4D", minQuantity: 2 },
+      requiredReferenceScriptHash: RSH.toUpperCase(),
+      requiredOutputDatumHash: DH.toUpperCase(),
+    });
+    expect(out.requiredScriptHashes).toEqual([SH]);
+    expect(out.requiredRedeemerTag).toBe("spend");
+    expect(out.requiredRedeemerConstructor).toBe(0);
+    expect(out.requiredMintedAsset).toEqual({ policyId: POLICY, assetName: "ad4d4d", minQuantity: 2 });
+    expect(out.requiredReferenceScriptHash).toBe(RSH);
+    expect(out.requiredOutputDatumHash).toBe(DH);
+  });
+
+  it("rejects malformed requiredScriptHashes", () => {
+    expect(() => parseTxSwapConfig({ scriptAddresses: [SCRIPT], requiredScriptHashes: ["zz"] })).toThrow(TxHashConfigError);
+  });
+  it("rejects unknown redeemer tag", () => {
+    expect(() => parseTxSwapConfig({ scriptAddresses: [SCRIPT], requiredRedeemerTag: "nope" })).toThrow(TxHashConfigError);
+  });
+  it("rejects negative redeemer constructor", () => {
+    expect(() => parseTxSwapConfig({ scriptAddresses: [SCRIPT], requiredRedeemerConstructor: -1 })).toThrow(TxHashConfigError);
+  });
+  it("rejects wrong-length requiredOutputDatumHash", () => {
+    expect(() => parseTxSwapConfig({ scriptAddresses: [SCRIPT], requiredOutputDatumHash: "abc" })).toThrow(TxHashConfigError);
+  });
+  it("rejects requiredMintedAsset with bad policyId", () => {
+    expect(() => parseTxSwapConfig({ scriptAddresses: [SCRIPT], requiredMintedAsset: { policyId: "short" } })).toThrow(TxHashConfigError);
   });
   it("rejects empty scriptAddresses", () => {
     expect(() => parseTxSwapConfig({ scriptAddresses: [] })).toThrow(TxHashConfigError);
@@ -162,6 +205,235 @@ describe("verification/tx-hash: tx_swap verifier", () => {
       submission: { txHash: TX },
     });
     expect(r).toEqual({ status: "rejected", reason: "tx_before_task_started" });
+  });
+});
+
+describe("verification/tx-hash: tx_swap strict verification", () => {
+  const SH = "a".repeat(56);
+  const REF_SH = "b".repeat(56);
+  const DH = "c".repeat(64);
+  const MINT_PID = "d".repeat(56);
+  const MINT_NAME = "deadbeef";
+
+  function mockTx(extra: Record<string, unknown>) {
+    (getTxInfo as ReturnType<typeof vi.fn>).mockResolvedValue(baseTx(extra));
+  }
+
+  it("script_hash_not_present when no plutusContract matches", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: "ff".repeat(28) }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredScriptHashes: [SH] },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "rejected", reason: "script_hash_not_present" });
+  });
+
+  it("verified when plutusContract matches a requiredScriptHash", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredScriptHashes: [SH] },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "verified" });
+  });
+
+  it("needs_review when plutusContracts is missing", async () => {
+    mockTx({}); // baseTx has no plutusContracts
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredScriptHashes: [SH] },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r.status).toBe("needs_review");
+    expect(r.reason).toMatch(/^provider_data_missing:/);
+  });
+
+  it("redeemer_tag_mismatch", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH, redeemerTag: "mint" }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredRedeemerTag: "spend" },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "rejected", reason: "redeemer_tag_mismatch" });
+  });
+
+  it("verified when redeemer tag matches", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH, redeemerTag: "spend" }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredRedeemerTag: "spend" },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "verified" });
+  });
+
+  it("needs_review provider_data_missing:redeemerTag when contract present but tag absent", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredRedeemerTag: "spend" },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "needs_review", reason: "provider_data_missing:redeemerTag" });
+  });
+
+  it("redeemer_constructor_mismatch", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH, redeemerConstructor: 1 }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredRedeemerConstructor: 0 },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "rejected", reason: "redeemer_constructor_mismatch" });
+  });
+
+  it("verified when redeemer constructor matches", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH, redeemerConstructor: 0 }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredRedeemerConstructor: 0 },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "verified" });
+  });
+
+  it("needs_review provider_data_missing:redeemerConstructor when blockfrost-style undecoded", async () => {
+    mockTx({ plutusContracts: [{ scriptHash: SH }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredRedeemerConstructor: 0 },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "needs_review", reason: "provider_data_missing:redeemerConstructor" });
+  });
+
+  it("minted_asset_not_present", async () => {
+    mockTx({ mintedAssets: [] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredMintedAsset: { policyId: MINT_PID, assetName: MINT_NAME } },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "rejected", reason: "minted_asset_not_present" });
+  });
+
+  it("verified when a matching mint is present", async () => {
+    mockTx({ mintedAssets: [{ policyId: MINT_PID, assetName: MINT_NAME, quantity: 5 }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredMintedAsset: { policyId: MINT_PID, assetName: MINT_NAME, minQuantity: 1 } },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "verified" });
+  });
+
+  it("needs_review provider_data_missing:mintedAssets when undefined", async () => {
+    mockTx({}); // no mintedAssets key
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredMintedAsset: { policyId: MINT_PID } },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "needs_review", reason: "provider_data_missing:mintedAssets" });
+  });
+
+  it("reference_script_not_attached", async () => {
+    mockTx({ referenceInputs: [] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredReferenceScriptHash: REF_SH },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "rejected", reason: "reference_script_not_attached" });
+  });
+
+  it("verified when reference script matches", async () => {
+    mockTx({ referenceInputs: [{ txHash: "xx", outputIndex: 0, scriptHash: REF_SH }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredReferenceScriptHash: REF_SH },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "verified" });
+  });
+
+  it("needs_review provider_data_missing:referenceInputs", async () => {
+    mockTx({});
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredReferenceScriptHash: REF_SH },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "needs_review", reason: "provider_data_missing:referenceInputs" });
+  });
+
+  it("output_datum_hash_mismatch", async () => {
+    mockTx({ outputDatums: [{ outputIndex: 0, datumHash: "ff".repeat(32), inlineDatumCborHex: null }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredOutputDatumHash: DH },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "rejected", reason: "output_datum_hash_mismatch" });
+  });
+
+  it("verified when output datum hash matches", async () => {
+    mockTx({ outputDatums: [{ outputIndex: 0, datumHash: DH, inlineDatumCborHex: null }] });
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredOutputDatumHash: DH },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "verified" });
+  });
+
+  it("needs_review provider_data_missing:outputDatums when undefined", async () => {
+    mockTx({});
+    const r = await verifyTxHash({
+      taskType: "tx_swap",
+      taskConfig: { scriptAddresses: [SCRIPT], requiredOutputDatumHash: DH },
+      task: {},
+      user: { stakeAddress: STAKE },
+      submission: { txHash: TX },
+    });
+    expect(r).toEqual({ status: "needs_review", reason: "provider_data_missing:outputDatums" });
   });
 });
 

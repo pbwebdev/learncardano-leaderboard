@@ -26,9 +26,26 @@ const TX_HASH_RE = /^[0-9a-f]{64}$/;
 
 // ---------- Config parsers ----------
 
+export type RedeemerTag = "spend" | "mint" | "cert" | "reward" | "vote" | "propose";
+
+export interface RequiredMintedAsset {
+  policyId: string;          // 56 hex chars, lowercase
+  assetName: string | null;  // hex, lowercase; null = match any asset under policy
+  minQuantity: number;       // default 1
+}
+
 export interface TxSwapConfig {
   scriptAddresses: string[]; // bech32 addresses (addr1...)
   minAdaIn: number | null;   // in ADA (not lovelace); verifier multiplies by 1e6
+  // Optional strict-verification fields. Each is an AND with the rest when
+  // configured. Hex values are normalised to lowercase by the parser so the
+  // verifier compares apples to apples regardless of provider casing.
+  requiredScriptHashes: string[] | null;          // each 56 hex chars
+  requiredRedeemerTag: RedeemerTag | null;
+  requiredRedeemerConstructor: number | null;     // non-negative integer
+  requiredMintedAsset: RequiredMintedAsset | null;
+  requiredReferenceScriptHash: string | null;     // 56 hex chars
+  requiredOutputDatumHash: string | null;         // 64 hex chars
 }
 
 export interface AssetPurchaseConfig {
@@ -69,7 +86,109 @@ export function parseTxSwapConfig(raw: unknown): TxSwapConfig {
     }
     minAdaIn = obj.minAdaIn;
   }
-  return { scriptAddresses, minAdaIn };
+
+  // ---- Optional strict-verification fields ----
+  const HEX56 = /^[0-9a-f]{56}$/;
+  const HEX64 = /^[0-9a-f]{64}$/;
+  const HEX_ANY = /^[0-9a-f]*$/;
+  const REDEEMER_TAGS = new Set<RedeemerTag>(["spend", "mint", "cert", "reward", "vote", "propose"]);
+
+  let requiredScriptHashes: string[] | null = null;
+  if (obj.requiredScriptHashes !== undefined && obj.requiredScriptHashes !== null) {
+    if (!Array.isArray(obj.requiredScriptHashes)) {
+      throw new TxHashConfigError("requiredScriptHashes", "must be an array of 56-char hex strings");
+    }
+    const list: string[] = [];
+    for (const h of obj.requiredScriptHashes) {
+      if (typeof h !== "string") {
+        throw new TxHashConfigError("requiredScriptHashes", "each entry must be a string");
+      }
+      const lower = h.toLowerCase();
+      if (!HEX56.test(lower)) {
+        throw new TxHashConfigError("requiredScriptHashes", "each entry must be 56 hex chars");
+      }
+      list.push(lower);
+    }
+    if (list.length > 0) requiredScriptHashes = list;
+  }
+
+  let requiredRedeemerTag: RedeemerTag | null = null;
+  if (obj.requiredRedeemerTag !== undefined && obj.requiredRedeemerTag !== null && obj.requiredRedeemerTag !== "") {
+    const v = String(obj.requiredRedeemerTag).toLowerCase();
+    if (!REDEEMER_TAGS.has(v as RedeemerTag)) {
+      throw new TxHashConfigError("requiredRedeemerTag", "must be one of spend|mint|cert|reward|vote|propose");
+    }
+    requiredRedeemerTag = v as RedeemerTag;
+  }
+
+  let requiredRedeemerConstructor: number | null = null;
+  if (obj.requiredRedeemerConstructor !== undefined && obj.requiredRedeemerConstructor !== null) {
+    if (
+      typeof obj.requiredRedeemerConstructor !== "number" ||
+      !Number.isInteger(obj.requiredRedeemerConstructor) ||
+      obj.requiredRedeemerConstructor < 0
+    ) {
+      throw new TxHashConfigError("requiredRedeemerConstructor", "must be a non-negative integer");
+    }
+    requiredRedeemerConstructor = obj.requiredRedeemerConstructor;
+  }
+
+  let requiredMintedAsset: RequiredMintedAsset | null = null;
+  if (obj.requiredMintedAsset !== undefined && obj.requiredMintedAsset !== null) {
+    const m = obj.requiredMintedAsset;
+    if (typeof m !== "object") {
+      throw new TxHashConfigError("requiredMintedAsset", "must be an object");
+    }
+    const mm = m as Record<string, unknown>;
+    const pid = typeof mm.policyId === "string" ? mm.policyId.toLowerCase() : "";
+    if (!HEX56.test(pid)) {
+      throw new TxHashConfigError("requiredMintedAsset.policyId", "must be 56 hex chars");
+    }
+    let assetName: string | null = null;
+    if (mm.assetName !== undefined && mm.assetName !== null && mm.assetName !== "") {
+      if (typeof mm.assetName !== "string" || !HEX_ANY.test(mm.assetName.toLowerCase())) {
+        throw new TxHashConfigError("requiredMintedAsset.assetName", "must be a hex string");
+      }
+      assetName = mm.assetName.toLowerCase();
+    }
+    let minQuantity = 1;
+    if (mm.minQuantity !== undefined && mm.minQuantity !== null) {
+      if (typeof mm.minQuantity !== "number" || !Number.isInteger(mm.minQuantity) || mm.minQuantity < 1) {
+        throw new TxHashConfigError("requiredMintedAsset.minQuantity", "must be a positive integer");
+      }
+      minQuantity = mm.minQuantity;
+    }
+    requiredMintedAsset = { policyId: pid, assetName, minQuantity };
+  }
+
+  let requiredReferenceScriptHash: string | null = null;
+  if (obj.requiredReferenceScriptHash !== undefined && obj.requiredReferenceScriptHash !== null && obj.requiredReferenceScriptHash !== "") {
+    const v = String(obj.requiredReferenceScriptHash).toLowerCase();
+    if (!HEX56.test(v)) {
+      throw new TxHashConfigError("requiredReferenceScriptHash", "must be 56 hex chars");
+    }
+    requiredReferenceScriptHash = v;
+  }
+
+  let requiredOutputDatumHash: string | null = null;
+  if (obj.requiredOutputDatumHash !== undefined && obj.requiredOutputDatumHash !== null && obj.requiredOutputDatumHash !== "") {
+    const v = String(obj.requiredOutputDatumHash).toLowerCase();
+    if (!HEX64.test(v)) {
+      throw new TxHashConfigError("requiredOutputDatumHash", "must be 64 hex chars");
+    }
+    requiredOutputDatumHash = v;
+  }
+
+  return {
+    scriptAddresses,
+    minAdaIn,
+    requiredScriptHashes,
+    requiredRedeemerTag,
+    requiredRedeemerConstructor,
+    requiredMintedAsset,
+    requiredReferenceScriptHash,
+    requiredOutputDatumHash,
+  };
 }
 
 export function parseAssetPurchaseConfig(raw: unknown): AssetPurchaseConfig {
@@ -158,6 +277,80 @@ function verifyTxSwap(opts: TxHashVerifyOpts, tx: TxInfo): VerifierResult {
       return { status: "rejected", reason: "user_input_below_min_ada" };
     }
   }
+
+  // ---- Strict-verification (optional) ----
+  const contracts = tx.plutusContracts;
+
+  if (cfg.requiredScriptHashes && cfg.requiredScriptHashes.length > 0) {
+    if (!contracts) {
+      return { status: "needs_review", reason: "provider_data_missing:plutusContracts" };
+    }
+    const want = new Set(cfg.requiredScriptHashes);
+    if (!contracts.some((c) => want.has(c.scriptHash))) {
+      return { status: "rejected", reason: "script_hash_not_present" };
+    }
+  }
+
+  if (cfg.requiredRedeemerTag) {
+    if (!contracts) {
+      return { status: "needs_review", reason: "provider_data_missing:plutusContracts" };
+    }
+    const tagged = contracts.filter((c) => c.redeemerTag !== undefined);
+    if (tagged.length === 0) {
+      return { status: "needs_review", reason: "provider_data_missing:redeemerTag" };
+    }
+    if (!tagged.some((c) => c.redeemerTag === cfg.requiredRedeemerTag)) {
+      return { status: "rejected", reason: "redeemer_tag_mismatch" };
+    }
+  }
+
+  if (cfg.requiredRedeemerConstructor != null) {
+    if (!contracts) {
+      return { status: "needs_review", reason: "provider_data_missing:plutusContracts" };
+    }
+    const decoded = contracts.filter((c) => c.redeemerConstructor !== undefined);
+    if (decoded.length === 0) {
+      return { status: "needs_review", reason: "provider_data_missing:redeemerConstructor" };
+    }
+    if (!decoded.some((c) => c.redeemerConstructor === cfg.requiredRedeemerConstructor)) {
+      return { status: "rejected", reason: "redeemer_constructor_mismatch" };
+    }
+  }
+
+  if (cfg.requiredMintedAsset) {
+    if (!tx.mintedAssets) {
+      return { status: "needs_review", reason: "provider_data_missing:mintedAssets" };
+    }
+    const m = cfg.requiredMintedAsset;
+    const ok = tx.mintedAssets.some(
+      (a) =>
+        a.policyId === m.policyId &&
+        (m.assetName == null || a.assetName === m.assetName) &&
+        a.quantity >= m.minQuantity,
+    );
+    if (!ok) {
+      return { status: "rejected", reason: "minted_asset_not_present" };
+    }
+  }
+
+  if (cfg.requiredReferenceScriptHash) {
+    if (!tx.referenceInputs) {
+      return { status: "needs_review", reason: "provider_data_missing:referenceInputs" };
+    }
+    if (!tx.referenceInputs.some((r) => r.scriptHash === cfg.requiredReferenceScriptHash)) {
+      return { status: "rejected", reason: "reference_script_not_attached" };
+    }
+  }
+
+  if (cfg.requiredOutputDatumHash) {
+    if (!tx.outputDatums) {
+      return { status: "needs_review", reason: "provider_data_missing:outputDatums" };
+    }
+    if (!tx.outputDatums.some((o) => o.datumHash === cfg.requiredOutputDatumHash)) {
+      return { status: "rejected", reason: "output_datum_hash_mismatch" };
+    }
+  }
+
   return { status: "verified" };
 }
 
