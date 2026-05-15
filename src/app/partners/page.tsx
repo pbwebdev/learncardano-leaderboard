@@ -46,8 +46,16 @@ export default function PartnersPage() {
             channel.
           </Bullet>
           <Bullet title="Off-chain bounties">
-            HMAC-verified webhooks from your bounty platform. We accept the
-            event, credit points, log audit.
+            HMAC-verified webhooks from your bounty page on{" "}
+            <a
+              href="https://bounty-preview.learncardano.io/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              Learn Cardano Bounties
+            </a>
+            . We accept the event, credit points, log audit.
           </Bullet>
           <Bullet title="Reward payouts">
             CSV export per project + date range, payment + stake addresses
