@@ -202,6 +202,14 @@ function DRepRegisteredFields({ cfg }: { cfg: Record<string, unknown> }) {
 }
 
 function TxSwapFields({ cfg }: { cfg: Record<string, unknown> }) {
+  const mintedAsset = (cfg.requiredMintedAsset ?? {}) as Record<string, unknown>;
+  const hasAdvanced =
+    (Array.isArray(cfg.requiredScriptHashes) && (cfg.requiredScriptHashes as unknown[]).length > 0) ||
+    !!cfg.requiredRedeemerTag ||
+    cfg.requiredRedeemerConstructor != null ||
+    !!cfg.requiredMintedAsset ||
+    !!cfg.requiredReferenceScriptHash ||
+    !!cfg.requiredOutputDatumHash;
   return (
     <>
       <label className="flex flex-col gap-1">
@@ -212,6 +220,70 @@ function TxSwapFields({ cfg }: { cfg: Record<string, unknown> }) {
         <span>Minimum ADA in (optional, lovelace — 1 ADA = 1_000_000)</span>
         <input name="cfg_minAdaIn" type="number" min={0} defaultValue={n(cfg.minAdaIn)} placeholder="1000000" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />
       </label>
+
+      <details className="mt-3 rounded border border-[color:var(--border)] p-2" open={hasAdvanced}>
+        <summary className="cursor-pointer text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">
+          Advanced verification (optional — pin to a specific contract interaction)
+        </summary>
+        <div className="mt-2 flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span>Required script hashes (one per line, 56 hex chars each)</span>
+            <span className="text-xs text-[color:var(--fg-muted)]">
+              Ask the partner for the Plutus script hash(es) of the contract a user interacts with.
+              The tx must spend from / mint via at least one matching script.
+            </span>
+            <textarea name="cfg_requiredScriptHashes" rows={2} defaultValue={arrLines(cfg.requiredScriptHashes)} placeholder="56-char hex script hash" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span>Required redeemer tag</span>
+            <span className="text-xs text-[color:var(--fg-muted)]">
+              Ask the partner which redeemer purpose this action uses (usually <code>spend</code> for DEX orders, <code>mint</code> for minting).
+            </span>
+            <select name="cfg_requiredRedeemerTag" defaultValue={s(cfg.requiredRedeemerTag)} className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1">
+              <option value="">— any —</option>
+              {["spend","mint","cert","reward","vote","propose"].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span>Required redeemer constructor index</span>
+            <span className="text-xs text-[color:var(--fg-muted)]">
+              Ask the partner for the constructor index — e.g. <code>0</code> for &quot;place order&quot;, <code>1</code> for cancel. Leave blank to accept any.
+            </span>
+            <input name="cfg_requiredRedeemerConstructor" type="number" min={0} defaultValue={n(cfg.requiredRedeemerConstructor)} placeholder="0" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />
+          </label>
+          <fieldset className="rounded border border-dashed border-[color:var(--border)] p-2">
+            <legend className="px-1 text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">
+              Required minted asset (optional — for &quot;tx mints a LP / receipt token&quot;)
+            </legend>
+            <label className="flex flex-col gap-1">
+              <span>Policy ID (56 hex chars)</span>
+              <input name="cfg_requiredMintedAsset_policyId" defaultValue={s(mintedAsset.policyId)} placeholder="56-char hex" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs" />
+            </label>
+            <label className="mt-2 flex flex-col gap-1">
+              <span>Asset name (hex, optional)</span>
+              <input name="cfg_requiredMintedAsset_assetName" defaultValue={s(mintedAsset.assetName)} placeholder="hex" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs" />
+            </label>
+            <label className="mt-2 flex flex-col gap-1">
+              <span>Minimum quantity (default 1)</span>
+              <input name="cfg_requiredMintedAsset_minQuantity" type="number" min={1} defaultValue={n(mintedAsset.minQuantity)} className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />
+            </label>
+          </fieldset>
+          <label className="flex flex-col gap-1">
+            <span>Required reference script hash (56 hex chars)</span>
+            <span className="text-xs text-[color:var(--fg-muted)]">
+              Ask the partner if their contract uses a reference script. If so, the tx must reference a UTxO carrying that script.
+            </span>
+            <input name="cfg_requiredReferenceScriptHash" defaultValue={s(cfg.requiredReferenceScriptHash)} placeholder="56-char hex" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span>Required output datum hash (64 hex chars)</span>
+            <span className="text-xs text-[color:var(--fg-muted)]">
+              For tasks pinned to a single datum shape — at least one tx output must carry this exact datum hash.
+            </span>
+            <input name="cfg_requiredOutputDatumHash" defaultValue={s(cfg.requiredOutputDatumHash)} placeholder="64-char hex" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs" />
+          </label>
+        </div>
+      </details>
     </>
   );
 }

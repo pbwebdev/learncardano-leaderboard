@@ -78,11 +78,28 @@ function buildTaskConfig(formData: FormData, taskType: string): unknown {
       return parseTaskConfigByType(taskType, {
         requireActiveLastEpochs: readIntOrUndef(formData, "cfg_requireActiveLastEpochs"),
       });
-    case "tx_swap":
+    case "tx_swap": {
+      const mintPid = readString(formData, "cfg_requiredMintedAsset_policyId");
+      const mintName = readString(formData, "cfg_requiredMintedAsset_assetName");
+      const mintQty = readIntOrUndef(formData, "cfg_requiredMintedAsset_minQuantity");
+      const requiredMintedAsset = mintPid
+        ? {
+            policyId: mintPid,
+            assetName: mintName || undefined,
+            minQuantity: mintQty,
+          }
+        : undefined;
       return parseTaskConfigByType(taskType, {
         scriptAddresses: readLines(formData, "cfg_scriptAddresses"),
         minAdaIn: readIntOrUndef(formData, "cfg_minAdaIn"),
+        requiredScriptHashes: readLines(formData, "cfg_requiredScriptHashes"),
+        requiredRedeemerTag: readString(formData, "cfg_requiredRedeemerTag") || undefined,
+        requiredRedeemerConstructor: readIntOrUndef(formData, "cfg_requiredRedeemerConstructor"),
+        requiredMintedAsset,
+        requiredReferenceScriptHash: readString(formData, "cfg_requiredReferenceScriptHash") || undefined,
+        requiredOutputDatumHash: readString(formData, "cfg_requiredOutputDatumHash") || undefined,
       });
+    }
     case "asset_purchase":
       return parseTaskConfigByType(taskType, {
         policyId: readString(formData, "cfg_policyId"),
