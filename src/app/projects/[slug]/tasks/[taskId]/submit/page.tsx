@@ -98,7 +98,7 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
           : "On-chain auto-verify · we read your current state";
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
+    <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <p className="text-xs uppercase tracking-wide text-[color:var(--fg-muted)]"><Link href={`/projects/${slug}`} className="underline">{project.name}</Link></p>
       <h1 className="mt-1 text-2xl font-bold tracking-tight">{task.title}</h1>
       <p className="mt-1 text-xs text-[color:var(--fg-muted)]">{verifyHint} · {task.points} pts on approval</p>
@@ -124,7 +124,12 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
       {isXType && xConfigured && !xLinked && (
         <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
           <p>This task verifies via your X (Twitter) account. Link it first, then submit.</p>
-          <a href={`/api/oauth/x/start?returnTo=${encodeURIComponent(`/projects/${slug}/tasks/${task.id}/submit`)}`} className="mt-3 inline-block rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Connect X</a>
+          <a
+            href={`/api/oauth/x/start?returnTo=${encodeURIComponent(`/projects/${slug}/tasks/${task.id}/submit`)}`}
+            className="mt-3 inline-flex w-full items-center justify-center rounded-[--radius-md] bg-[color:var(--accent-primary)] px-4 py-2.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)] sm:w-auto sm:px-3 sm:py-1.5"
+          >
+            Connect X
+          </a>
         </section>
       )}
 
@@ -136,7 +141,12 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
       {isYtType && ytConfigured && !ytLinked && (
         <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
           <p>This task verifies via your YouTube channel. Link it first, then submit.</p>
-          <a href={`/api/oauth/youtube/start?returnTo=${encodeURIComponent(`/projects/${slug}/tasks/${task.id}/submit`)}`} className="mt-3 inline-block rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Connect YouTube</a>
+          <a
+            href={`/api/oauth/youtube/start?returnTo=${encodeURIComponent(`/projects/${slug}/tasks/${task.id}/submit`)}`}
+            className="mt-3 inline-flex w-full items-center justify-center rounded-[--radius-md] bg-[color:var(--accent-primary)] px-4 py-2.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)] sm:w-auto sm:px-3 sm:py-1.5"
+          >
+            Connect YouTube
+          </a>
         </section>
       )}
 
@@ -152,13 +162,13 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
           {isManual && manualCfg?.requiresProofUrl && (
             <label className="flex flex-col gap-1">
               <span>Proof URL <span className="text-[color:var(--fg-muted)]">(https://…)</span></span>
-              <input name="proofUrl" type="url" required placeholder="https://x.com/you/status/123" className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />
+              <input name="proofUrl" type="url" required placeholder="https://x.com/you/status/123" className="w-full rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-3 py-2" />
             </label>
           )}
           {isManual && manualCfg?.requiresScreenshot && (
             <label className="flex flex-col gap-1">
               <span>Screenshot <span className="text-[color:var(--fg-muted)]">(PNG/JPEG/WEBP, max 5 MB)</span></span>
-              <input name="screenshot" type="file" accept="image/png,image/jpeg,image/webp" required className="text-xs" />
+              <input name="screenshot" type="file" accept="image/png,image/jpeg,image/webp" required className="text-xs file:tap-target file:mr-3 file:rounded-[--radius-md] file:border file:border-[color:var(--border-strong)] file:bg-[color:var(--bg-elevated)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[color:var(--bg-subtle)]" />
             </label>
           )}
           {isTxHash && (
@@ -169,7 +179,11 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
                 required
                 pattern="[0-9a-fA-F]{64}"
                 placeholder="abc123…"
-                className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
+                inputMode="text"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                className="w-full rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-3 py-2 font-mono text-xs"
               />
             </label>
           )}
@@ -181,12 +195,12 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
                 type="url"
                 required
                 placeholder="https://x.com/you/status/123…"
-                className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1"
+                className="w-full rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-3 py-2"
               />
               <span className="text-xs text-[color:var(--fg-muted)]">Paste the link to your tweet that includes the required hashtags / mentions.</span>
             </label>
           )}
-          <button type="submit" className="mt-2 self-start rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Submit{isManual ? " for review" : ""}</button>
+          <button type="submit" className="mt-2 w-full sm:w-auto sm:self-start rounded-[--radius-md] bg-[color:var(--accent-primary)] px-4 py-2.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Submit{isManual ? " for review" : ""}</button>
           <p className="text-xs text-[color:var(--fg-muted)]">{isManual ? "Your submission will appear in the admin queue. Points are awarded on approval." : "We&apos;ll verify on-chain automatically — usually within a minute. Refresh your dashboard to see the result."}</p>
         </SaveForm>
       )}
