@@ -7,7 +7,8 @@
  */
 
 import { parseManualReviewConfig } from "./verification/manual";
-import { isPhase3PlusTaskType, isTaskTypeEnabledInPhase2 } from "./verification";
+import { isPhase3PlusTaskType, isTaskTypeEnabledInPhase3 } from "./verification";
+import { extractTweetId } from "./oauth/x";
 
 export interface TaskLike {
   id: string;
@@ -59,10 +60,12 @@ export function canSubmitForTask(opts: {
   // Phase 2 enables six on-chain types alongside manual_review. Phase 3+
   // OAuth / webhook types still come through this path eventually, but
   // require additional plumbing — gate them off for now.
+  // Phase 4+ types (bounty_completion) aren't submitted by users directly —
+  // they come in via webhook.
   if (isPhase3PlusTaskType(opts.task.taskType)) {
     return { ok: false, reason: "unsupported_task_type" };
   }
-  if (!isTaskTypeEnabledInPhase2(opts.task.taskType)) {
+  if (!isTaskTypeEnabledInPhase3(opts.task.taskType)) {
     return { ok: false, reason: "unsupported_task_type" };
   }
   const startsAt = toMillis(opts.task.startsAt);
@@ -111,6 +114,10 @@ const ON_CHAIN_TASK_TYPES = new Set([
 
 const TX_HASH_REQUIRED_TYPES = new Set(["tx_swap", "asset_purchase"]);
 
+// Phase 3: x_tweet wants a tweet URL; x_retweet and youtube_comment read
+// state directly from the user's linked account (no per-submission proof).
+const TWEET_URL_REQUIRED_TYPES = new Set(["x_tweet"]);
+
 /**
  * Validate the submission's proof inputs against the task type + config.
  *
@@ -124,6 +131,17 @@ const TX_HASH_REQUIRED_TYPES = new Set(["tx_swap", "asset_purchase"]);
  */
 export function validateProofInputs(input: ProofValidationInput): ProofValidationResult {
   const taskType = input.taskType ?? "manual_review";
+  if (TWEET_URL_REQUIRED_TYPES.has(taskType)) {
+    const url = (input.proofUrl ?? "").trim();
+    if (!url) return { ok: false, field: "proofUrl", reason: "required" };
+    if (!extractTweetId(url)) return { ok: false, field: "proofUrl", reason: "not_a_tweet_url" };
+    return { ok: true };
+  }
+  // x_retweet + youtube_comment have no per-submission proof; the verifier
+  // reads from the user's linked account.
+  if (taskType === "x_retweet" || taskType === "youtube_comment") {
+    return { ok: true };
+  }
   if (TX_HASH_REQUIRED_TYPES.has(taskType)) {
     const tx = (input.txHash ?? "").trim().toLowerCase();
     if (!tx) return { ok: false, field: "txHash", reason: "required" };

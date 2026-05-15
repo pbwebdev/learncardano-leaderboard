@@ -29,7 +29,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { submissions, tasks, auditLog, pointsLedger } from "@/db/schema";
+import { submissions, tasks, auditLog, pointsLedger, users } from "@/db/schema";
 import { verify, type VerifierResult } from "@/lib/verification";
 
 export interface VerifyJob {
@@ -117,11 +117,26 @@ async function processOne(db: ReturnType<typeof drizzle>, submissionId: string, 
     await db.update(submissions).set({ status: "verifying" }).where(eq(submissions.id, submissionId));
   }
 
+  // OAuth verifiers need the user's linked-account fields. Cheap one-shot
+  // select — we already round-tripped to D1 twice above, this is the third.
+  const userRow = (await db.select({
+    xUserId: users.xUserId,
+    xAccessTokenEnc: users.xAccessTokenEnc,
+    youtubeChannelId: users.youtubeChannelId,
+    youtubeAccessTokenEnc: users.youtubeAccessTokenEnc,
+  }).from(users).where(eq(users.stakeAddress, sub.userId)).limit(1))[0];
+
   const result: VerifierResult = await verify({
     taskType: task.taskType,
     taskConfig: task.taskConfig,
     task: { startsAt: task.startsAt, endsAt: task.endsAt },
-    user: { stakeAddress: sub.userId },
+    user: {
+      stakeAddress: sub.userId,
+      xUserId: userRow?.xUserId ?? null,
+      xAccessTokenEnc: userRow?.xAccessTokenEnc ?? null,
+      youtubeChannelId: userRow?.youtubeChannelId ?? null,
+      youtubeAccessTokenEnc: userRow?.youtubeAccessTokenEnc ?? null,
+    },
     submission: { proofUrl: sub.proofUrl, proofR2Key: sub.proofR2Key, txHash: sub.txHash },
   });
 

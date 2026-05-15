@@ -86,9 +86,21 @@ describe("submissions: canSubmitForTask eligibility", () => {
     expect(r).toEqual({ ok: true });
   });
 
-  it("blocks Phase 3+ task types as unsupported", () => {
+  it("allows Phase 3 OAuth task types", () => {
+    // x_tweet / x_retweet / youtube_comment are submission-driven in Phase 3.
+    for (const t of ["x_tweet", "x_retweet", "youtube_comment"]) {
+      const r = canSubmitForTask({
+        task: makeTask({ taskType: t, taskConfig: {} }),
+        priorSubmissions: [],
+        now: NOW,
+      });
+      expect(r).toEqual({ ok: true });
+    }
+  });
+
+  it("blocks Phase 4+ webhook-only task types as unsupported", () => {
     const r = canSubmitForTask({
-      task: makeTask({ taskType: "x_tweet", taskConfig: {} }),
+      task: makeTask({ taskType: "bounty_completion", taskConfig: {} }),
       priorSubmissions: [],
       now: NOW,
     });

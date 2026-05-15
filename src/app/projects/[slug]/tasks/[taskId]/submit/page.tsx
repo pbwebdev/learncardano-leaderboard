@@ -3,11 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { getCurrentStakeAddressOrNull } from "@/lib/auth";
 import { getDb } from "@/db/client";
-import { projects, submissions, tasks } from "@/db/schema";
+import { projects, submissions, tasks, users } from "@/db/schema";
 import { SaveForm } from "@/components/save-form";
 import { parseManualReviewConfig } from "@/lib/verification/manual";
 import { canSubmitForTask } from "@/lib/submissions";
-import { isTaskTypeEnabledInPhase2 } from "@/lib/verification";
+import { isTaskTypeEnabledInPhase3 } from "@/lib/verification";
+import { isXConfigured } from "@/lib/oauth/x";
+import { isYouTubeConfigured } from "@/lib/oauth/youtube";
 import { submitTask } from "./actions";
 
 export const runtime = "nodejs";
@@ -20,6 +22,8 @@ const READ_ONLY_TYPES = new Set([
   "drep_registered",
   "governance_vote",
 ]);
+const X_TYPES = new Set(["x_tweet", "x_retweet"]);
+const YT_TYPES = new Set(["youtube_comment"]);
 
 export default async function SubmitTaskPage({ params }: { params: Promise<{ slug: string; taskId: string }> }) {
   const stake = await getCurrentStakeAddressOrNull();
@@ -32,11 +36,11 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
   const task = (await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.projectId, slug))).limit(1))[0];
   if (!task) notFound();
 
-  if (!isTaskTypeEnabledInPhase2(task.taskType)) {
+  if (!isTaskTypeEnabledInPhase3(task.taskType)) {
     return (
       <main className="mx-auto max-w-2xl px-6 py-10">
         <h1 className="text-2xl font-bold">This task type isn&apos;t live yet</h1>
-        <p className="mt-2 text-sm text-[color:var(--fg-muted)]">Phase 2 supports manual review and on-chain auto-verification. Social and webhook tasks land in Phase 3+.</p>
+        <p className="mt-2 text-sm text-[color:var(--fg-muted)]">Phase 3 supports manual review, on-chain auto-verification, and X/YouTube OAuth tasks. Bounty-webhook tasks land in Phase 4.</p>
         <p className="mt-4 text-sm"><Link href={`/projects/${slug}`} className="underline">Back to {project.name}</Link></p>
       </main>
     );
@@ -51,6 +55,23 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
   const isManual = task.taskType === "manual_review";
   const isTxHash = TX_HASH_TYPES.has(task.taskType);
   const isReadOnly = READ_ONLY_TYPES.has(task.taskType);
+  const isXType = X_TYPES.has(task.taskType);
+  const isYtType = YT_TYPES.has(task.taskType);
+  const isTweetUrl = task.taskType === "x_tweet";
+
+  // For OAuth task types, surface "Connect X / YouTube" CTA when the
+  // user hasn't linked yet (xUserId/youtubeChannelId not populated).
+  // Verifiers also detect this and return needs_review — the UI gate
+  // saves a round-trip.
+  let xLinked = false;
+  let ytLinked = false;
+  if (isXType || isYtType) {
+    const u = (await db.select({ x: users.xUserId, yt: users.youtubeChannelId }).from(users).where(eq(users.stakeAddress, stake)).limit(1))[0];
+    xLinked = !!u?.x;
+    ytLinked = !!u?.yt;
+  }
+  const xConfigured = isXType ? isXConfigured() : true;
+  const ytConfigured = isYtType ? isYouTubeConfigured() : true;
 
   let manualCfg: ReturnType<typeof parseManualReviewConfig> | null = null;
   if (isManual) {
@@ -70,7 +91,11 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
     ? "Manual review · admin approves"
     : isTxHash
       ? "On-chain auto-verify · paste your tx hash"
-      : "On-chain auto-verify · we read your current state";
+      : isXType
+        ? "Auto-verify via X · we check your linked account"
+        : isYtType
+          ? "Auto-verify via YouTube · we check your linked channel"
+          : "On-chain auto-verify · we read your current state";
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
@@ -88,6 +113,30 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
       {isReadOnly && (
         <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
           <p>Submit this task to enqueue verification. We&apos;ll read your current delegation / DRep status directly from the chain — no extra proof needed.</p>
+        </section>
+      )}
+
+      {isXType && !xConfigured && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--bg-elevated)] p-4 text-sm">
+          <p>X integration isn&apos;t configured yet. Peter is wiring this up — check back soon.</p>
+        </section>
+      )}
+      {isXType && xConfigured && !xLinked && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
+          <p>This task verifies via your X (Twitter) account. Link it first, then submit.</p>
+          <a href={`/api/oauth/x/start?returnTo=${encodeURIComponent(`/projects/${slug}/tasks/${task.id}/submit`)}`} className="mt-3 inline-block rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Connect X</a>
+        </section>
+      )}
+
+      {isYtType && !ytConfigured && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--bg-elevated)] p-4 text-sm">
+          <p>YouTube integration isn&apos;t configured yet. Peter is wiring this up — check back soon.</p>
+        </section>
+      )}
+      {isYtType && ytConfigured && !ytLinked && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
+          <p>This task verifies via your YouTube channel. Link it first, then submit.</p>
+          <a href={`/api/oauth/youtube/start?returnTo=${encodeURIComponent(`/projects/${slug}/tasks/${task.id}/submit`)}`} className="mt-3 inline-block rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Connect YouTube</a>
         </section>
       )}
 
@@ -122,6 +171,19 @@ export default async function SubmitTaskPage({ params }: { params: Promise<{ slu
                 placeholder="abc123…"
                 className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
               />
+            </label>
+          )}
+          {isTweetUrl && xLinked && xConfigured && (
+            <label className="flex flex-col gap-1">
+              <span>Tweet URL</span>
+              <input
+                name="proofUrl"
+                type="url"
+                required
+                placeholder="https://x.com/you/status/123…"
+                className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1"
+              />
+              <span className="text-xs text-[color:var(--fg-muted)]">Paste the link to your tweet that includes the required hashtags / mentions.</span>
             </label>
           )}
           <button type="submit" className="mt-2 self-start rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Submit{isManual ? " for review" : ""}</button>
