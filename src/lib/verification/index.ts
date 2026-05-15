@@ -110,6 +110,41 @@ export function taskTypeLabelSuffix(t: string): string {
 
 export type { VerifierResult } from "./manual";
 
+// ─────────────────────────── Config parser dispatcher ───────────────────────────
+//
+// Each verifier ships its own hand-rolled config parser. Admin save actions
+// route through this dispatcher so we always re-validate before persisting
+// (CLAUDE.md § Task config validation: "never trust").
+//
+// Imports are deferred to avoid pulling crypto / fetch / Drizzle when this
+// module is imported from the admin form (a client component).
+
+import { parseManualReviewConfig } from "./manual";
+import { parsePoolDelegationConfig, parseDRepDelegationConfig } from "./delegation";
+import { parseDRepRegisteredConfig } from "./drep-activity";
+import { parseTxSwapConfig, parseAssetPurchaseConfig } from "./tx-hash";
+import { parseGovernanceVoteConfig } from "./governance";
+import { parseXTweetConfig, parseXRetweetConfig } from "./social-x";
+import { parseYouTubeCommentConfig } from "./social-youtube";
+import { parseBountyCompletionConfig } from "./bounty";
+
+export function parseTaskConfigByType(taskType: string, raw: unknown): unknown {
+  switch (taskType) {
+    case "manual_review":     return parseManualReviewConfig(raw);
+    case "pool_delegation":   return parsePoolDelegationConfig(raw);
+    case "drep_delegation":   return parseDRepDelegationConfig(raw);
+    case "drep_registered":   return parseDRepRegisteredConfig(raw);
+    case "tx_swap":           return parseTxSwapConfig(raw);
+    case "asset_purchase":    return parseAssetPurchaseConfig(raw);
+    case "governance_vote":   return parseGovernanceVoteConfig(raw);
+    case "x_tweet":           return parseXTweetConfig(raw);
+    case "x_retweet":         return parseXRetweetConfig(raw);
+    case "youtube_comment":   return parseYouTubeCommentConfig(raw);
+    case "bounty_completion": return parseBountyCompletionConfig(raw);
+    default: throw new Error(`unknown_task_type:${taskType}`);
+  }
+}
+
 /**
  * Verifier dispatch surface. Phase 1 only needed `taskType` + `taskConfig`
  * + `submission`. Phase 2 verifiers also need the task's start time (for

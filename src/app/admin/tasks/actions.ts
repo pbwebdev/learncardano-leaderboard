@@ -6,8 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { getDb } from "@/db/client";
 import { tasks } from "@/db/schema";
 import { logChange } from "@/lib/audit";
-import { ALL_TASK_TYPES, isAdminCreatableTaskType } from "@/lib/verification";
-import { parseManualReviewConfig } from "@/lib/verification/manual";
+import { ALL_TASK_TYPES, isAdminCreatableTaskType, parseTaskConfigByType } from "@/lib/verification";
 
 const VALID_STATUSES = new Set(["draft", "active", "paused", "ended"]);
 
@@ -30,17 +29,90 @@ function readBool(fd: FormData, key: string): boolean {
   return readString(fd, key) === "on";
 }
 
+function readIntOrUndef(fd: FormData, key: string): number | undefined {
+  const v = readString(fd, key);
+  if (!v) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : undefined;
+}
+
+function readCsv(fd: FormData, key: string): string[] {
+  return readString(fd, key)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function readLines(fd: FormData, key: string): string[] {
+  return readString(fd, key)
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Assemble the typed taskConfig object from cfg_* FormData fields, then
+ * route through the central parseTaskConfigByType dispatcher for the
+ * verifier-specific Zod-style validation. Throws on invalid input
+ * (caller surfaces as a 500 with the underlying error message).
+ */
 function buildTaskConfig(formData: FormData, taskType: string): unknown {
-  if (taskType === "manual_review") {
-    const cfg = {
-      instructions: readString(formData, "cfg_instructions"),
-      requiresProofUrl: readBool(formData, "cfg_requiresProofUrl"),
-      requiresScreenshot: readBool(formData, "cfg_requiresScreenshot"),
-    };
-    // Throws ManualReviewConfigError on invalid input.
-    return parseManualReviewConfig(cfg);
+  switch (taskType) {
+    case "manual_review":
+      return parseTaskConfigByType(taskType, {
+        instructions: readString(formData, "cfg_instructions"),
+        requiresProofUrl: readBool(formData, "cfg_requiresProofUrl"),
+        requiresScreenshot: readBool(formData, "cfg_requiresScreenshot"),
+      });
+    case "pool_delegation":
+      return parseTaskConfigByType(taskType, {
+        poolId: readString(formData, "cfg_poolId") || undefined,
+        clawbackOnUndelegate: readBool(formData, "cfg_clawbackOnUndelegate"),
+      });
+    case "drep_delegation":
+      return parseTaskConfigByType(taskType, {
+        drepId: readString(formData, "cfg_drepId") || undefined,
+        mustBeActive: readBool(formData, "cfg_mustBeActive"),
+      });
+    case "drep_registered":
+      return parseTaskConfigByType(taskType, {
+        requireActiveLastEpochs: readIntOrUndef(formData, "cfg_requireActiveLastEpochs"),
+      });
+    case "tx_swap":
+      return parseTaskConfigByType(taskType, {
+        scriptAddresses: readLines(formData, "cfg_scriptAddresses"),
+        minAdaIn: readIntOrUndef(formData, "cfg_minAdaIn"),
+      });
+    case "asset_purchase":
+      return parseTaskConfigByType(taskType, {
+        policyId: readString(formData, "cfg_policyId"),
+        assetName: readString(formData, "cfg_assetName") || undefined,
+        minQuantity: readIntOrUndef(formData, "cfg_minQuantity"),
+      });
+    case "governance_vote":
+      return parseTaskConfigByType(taskType, {
+        actionTxHash: readString(formData, "cfg_actionTxHash") || undefined,
+      });
+    case "x_tweet":
+      return parseTaskConfigByType(taskType, {
+        requiredHashtags: readCsv(formData, "cfg_requiredHashtags"),
+        requiredMentions: readCsv(formData, "cfg_requiredMentions"),
+      });
+    case "x_retweet":
+      return parseTaskConfigByType(taskType, {
+        targetTweetId: readString(formData, "cfg_targetTweetId"),
+      });
+    case "youtube_comment":
+      return parseTaskConfigByType(taskType, {
+        videoId: readString(formData, "cfg_videoId"),
+      });
+    case "bounty_completion":
+      return parseTaskConfigByType(taskType, {
+        bountyId: readString(formData, "cfg_bountyId"),
+      });
+    default:
+      throw new Error(`unknown_task_type:${taskType}`);
   }
-  throw new Error(`unsupported_task_type_phase1:${taskType}`);
 }
 
 export async function createTask(formData: FormData): Promise<void> {
