@@ -1,108 +1,113 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
- * Smashing-Magazine-inspired theme tokens.
- * Source: https://www.smashingmagazine.com/css/article-dark-mode-v3.css
- * Fonts: Roboto Slab (body) + Roboto (UI) — open-license fallbacks for
- * Smashing's proprietary Elena/Mija stacks.
+ * Theme tokens — Nextly-inspired (indigo-on-trueGray dark mode).
+ *
+ * Visual inspiration drawn from the "Nextly" Tailwind landing-page template
+ * by Surjith S M (web3templates), ISC-licensed. We rebuild the look in our
+ * own CSS variables rather than copy template source; the look is the
+ * familiar indigo-600 / trueGray-900 SaaS palette common to that genre.
+ *
+ * All component styles already consume these CSS vars, so the palette
+ * swap propagates without touching component files.
  * ------------------------------------------------------------------------- */
 
 :root {
-  /* Surfaces */
+  /* ---- Surfaces (light mode) ---- */
   --bg: #ffffff;
-  --bg-elevated: #f7f7f7;
-  --bg-subtle: #f6f6f6;
-  --bg-code: #f4f1ee;
+  --bg-elevated: #f9fafb;        /* near gray-50 */
+  --bg-subtle: #f3f4f6;          /* gray-100 */
+  --bg-code: #f3f4f6;
   --surface-card: #ffffff;
 
-  /* Text — WCAG AA contrast targets against the white surface:
-     --fg     #2a2a2a → 13.7:1  (normal text, very strong)
-     --fg-muted #555555 → 7.4:1  (normal text, AAA)
-     --fg-faint #6a6a6a → 5.4:1  (normal text, AA; was #777777 ≈4.4:1 fail)
-     --fg-heading #111  → 18.9:1 */
-  --fg: #2a2a2a;
-  --fg-muted: #555555;
-  --fg-faint: #6a6a6a;
-  --fg-heading: #111111;
+  /* ---- Text (light mode, WCAG AA against #fff) ---- */
+  --fg: #1f2937;                 /* gray-800 — body */
+  --fg-muted: #4b5563;           /* gray-600 — body muted */
+  --fg-faint: #6b7280;           /* gray-500 — faint */
+  --fg-heading: #111827;         /* gray-900 — headings */
 
-  /* Accents (Smashing red as brand, blue as link/info) */
-  --accent-primary: #d33a2c;          /* Smashing red (light mode link/CTAs) */
-  --accent-primary-strong: #b62a1e;
-  --accent-info: #0168b8;             /* Smashing blue */
-  --accent-info-strong: #014e8d;
-  --accent-tertiary: #5e82ab;
+  /* ---- Accents ---- */
+  --accent-primary: #4f46e5;          /* indigo-600 (CTA) */
+  --accent-primary-strong: #4338ca;   /* indigo-700 (hover) */
+  --accent-primary-soft: #eef2ff;     /* indigo-50 (chip bg) */
+  --accent-primary-tint: #6366f1;     /* indigo-500 (icon tile) */
+  --accent-info: #4f46e5;             /* indigo-600 — link color */
+  --accent-info-strong: #4338ca;
+  --accent-tertiary: #818cf8;         /* indigo-400 — secondary */
 
-  /* Status (semantic) */
-  --status-green: #137d54;
-  --status-green-bg: #d6f3e7;
-  --status-amber: #8a6d00;
-  --status-amber-bg: #fbeaa3;
-  --status-red: #bc3428;
-  --status-red-bg: #fbebea;
-  --status-neutral: #555555;
-  --status-neutral-bg: #ececec;
+  /* ---- Status (semantic — kept readable in both modes) ---- */
+  --status-green: #047857;
+  --status-green-bg: #d1fae5;
+  --status-amber: #92400e;
+  --status-amber-bg: #fef3c7;
+  --status-red: #b91c1c;
+  --status-red-bg: #fee2e2;
+  --status-neutral: #4b5563;
+  --status-neutral-bg: #e5e7eb;
 
-  /* Lines */
-  --border: #e5e3df;
-  --border-strong: #cbc7c0;
-  --rule: #d8d5cf;
+  /* ---- Lines ---- */
+  --border: #e5e7eb;             /* gray-200 */
+  --border-strong: #d1d5db;      /* gray-300 */
+  --rule: #f3f4f6;               /* gray-100 */
 
-  /* Shadows */
-  --shadow-card: 1px 1px 6px rgba(0, 0, 0, 0.06);
+  /* ---- Shadows ---- */
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.06), 0 1px 3px rgba(17, 24, 39, 0.04);
 
-  /* Radius — Smashing keeps things mostly square; use small radii */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
+  /* ---- Radius — Nextly uses softer corners than Smashing did ---- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  /* Typography scale (Smashing uses generous sizing) */
-  --font-size-base: 1.1875rem;        /* 19px */
-  --font-size-sm: 1.0625rem;          /* 17px */
-  --font-size-xs: 0.9375rem;          /* 15px */
-  --line-height-base: 1.6;
-  --line-height-heading: 1.2;
-  --tracking-heading: -0.01em;
+  /* ---- Typography scale ---- */
+  --font-size-base: 1rem;             /* 16px */
+  --font-size-sm: 0.875rem;           /* 14px */
+  --font-size-xs: 0.75rem;            /* 12px */
+  --line-height-base: 1.65;
+  --line-height-heading: 1.15;
+  --tracking-heading: -0.02em;        /* tighter, modern */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Darker teal-navy palette (May 2026 contrast bump). The page sits
-       on solid near-black #061115; cards / tables lift to #162c35;
-       table headers and category bars sit between them at #11242d. */
-    --bg: #061115;
-    --bg-elevated: #11242d;
-    --bg-subtle: #0d1d24;
-    --bg-code: #1a2f38;
-    --surface-card: #162c35;
+    /* ---- Surfaces (dark mode — Nextly's trueGray-900 family) ---- */
+    --bg: #171717;                 /* trueGray-900 */
+    --bg-elevated: #262626;        /* trueGray-800 */
+    --bg-subtle: #1f1f1f;
+    --bg-code: #262626;
+    --surface-card: #1c1c1c;
 
-    --fg: #e5e5e5;
-    --fg-muted: #bdddff;
-    --fg-faint: #94b3d2;
-    --fg-heading: #ffffff;
+    /* ---- Text on dark ---- */
+    --fg: #e5e7eb;                 /* gray-200 — body */
+    --fg-muted: #d1d5db;           /* gray-300 — slightly brighter for legibility */
+    --fg-faint: #9ca3af;           /* gray-400 — faint */
+    --fg-heading: #ffffff;         /* pure white headings */
 
-    /* Darkened from Smashing's #f94962 (3.4:1 against white — AA fail for
-       normal text) to #cc1f3f (5.4:1 — AA pass). Used as the primary
-       button background where white text sits on top. */
-    --accent-primary: #cc1f3f;
-    --accent-primary-strong: #e64668;
-    --accent-info: #6fd2ff;           /* Cyan link colour */
-    --accent-info-strong: #a3e2ff;
-    --accent-tertiary: #bdddff;
+    /* ---- Accents on dark ---- */
+    --accent-primary: #6366f1;          /* indigo-500 — softened on dark */
+    --accent-primary-strong: #818cf8;   /* indigo-400 — hover lighter */
+    --accent-primary-soft: rgba(99, 102, 241, 0.12);
+    --accent-primary-tint: #818cf8;
+    --accent-info: #a5b4fc;             /* indigo-300 — readable link on dark */
+    --accent-info-strong: #c7d2fe;      /* indigo-200 — hover */
+    --accent-tertiary: #818cf8;
 
-    --status-green: #adfbda;
-    --status-green-bg: rgba(54, 179, 12, 0.18);
-    --status-amber: #ebf38b;
-    --status-amber-bg: rgba(231, 177, 124, 0.18);
-    --status-red: #fda399;
-    --status-red-bg: rgba(249, 73, 98, 0.18);
-    --status-neutral: #bdddff;
-    --status-neutral-bg: rgba(189, 221, 255, 0.10);
+    /* ---- Status on dark ---- */
+    --status-green: #6ee7b7;
+    --status-green-bg: rgba(16, 185, 129, 0.15);
+    --status-amber: #fcd34d;
+    --status-amber-bg: rgba(245, 158, 11, 0.15);
+    --status-red: #fca5a5;
+    --status-red-bg: rgba(239, 68, 68, 0.15);
+    --status-neutral: #d1d5db;
+    --status-neutral-bg: rgba(209, 213, 219, 0.10);
 
-    --border: #244654;
-    --border-strong: #405c63;
-    --rule: #244654;
+    /* ---- Lines on dark ---- */
+    --border: #404040;             /* trueGray-700 */
+    --border-strong: #525252;      /* trueGray-600 */
+    --rule: #262626;               /* trueGray-800 — softer divider */
 
-    --shadow-card: 1px 1px 6px rgba(0, 0, 0, 0.25);
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -132,8 +137,10 @@
   --color-status-neutral: var(--status-neutral);
   --color-status-neutral-bg: var(--status-neutral-bg);
 
-  --font-serif: var(--font-serif), "Roboto Slab", "Droid Serif", Georgia, serif;
-  --font-sans: var(--font-sans), -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", system-ui, Arial, sans-serif;
+  /* Sans-first now — Nextly is a sans-only design. Serif stays available
+     for long-form description bodies if we want it later. */
+  --font-sans: var(--font-sans), -apple-system, BlinkMacSystemFont, "Inter", Roboto, "Segoe UI", system-ui, Arial, sans-serif;
+  --font-serif: var(--font-serif), "Roboto Slab", Georgia, serif;
   --font-mono: "Fira Code", Menlo, "Courier New", Consolas, monospace;
 }
 
@@ -147,9 +154,8 @@ html {
 
 body {
   background: var(--bg);
-  background-image: var(--bg-gradient, none);
   color: var(--fg);
-  font-family: var(--font-serif), "Roboto Slab", "Droid Serif", Georgia, serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Inter", Roboto, system-ui, Arial, sans-serif;
   font-size: var(--font-size-base);
   line-height: var(--line-height-base);
   font-feature-settings: "kern", "liga";
@@ -158,16 +164,17 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, Roboto, system-ui, Arial, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Inter", Roboto, system-ui, Arial, sans-serif;
   color: var(--fg-heading);
   line-height: var(--line-height-heading);
   letter-spacing: var(--tracking-heading);
   font-weight: 700;
 }
 
-h1 { font-size: clamp(2rem, 1.6rem + 1.5vw, 2.75rem); }
-h2 { font-size: 1.5rem; }
-h3 { font-size: 1.2rem; }
+/* Hero-scale headings — Nextly opens with a 4xl/6xl-ish first impression. */
+h1 { font-size: clamp(2.25rem, 1.5rem + 3vw, 3.75rem); line-height: 1.1; }
+h2 { font-size: clamp(1.5rem, 1.2rem + 1vw, 2.25rem); }
+h3 { font-size: 1.25rem; }
 
 a {
   color: var(--accent-info);
@@ -193,23 +200,20 @@ hr {
   margin: 2rem 0;
 }
 
-::selection { background: rgba(52, 81, 113, 0.45); color: inherit; }
+::selection { background: color-mix(in srgb, var(--accent-primary) 35%, transparent); color: inherit; }
 
-/* Form controls — keep them readable on the dark gradient surface */
-select, input[type="text"], input[type="search"], textarea {
+/* Form controls */
+select, input[type="text"], input[type="search"], input[type="url"], input[type="email"], textarea {
   background: var(--bg-elevated);
   color: var(--fg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  padding: 0.4rem 0.55rem;
+  padding: 0.5rem 0.7rem;
   font-family: inherit;
   font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
-/* Consistent keyboard-focus ring on every interactive element. Browser
- * defaults are too subtle on dark surfaces, and Tailwind preflight wipes
- * the system outline. Use :focus-visible so mouse clicks don't show it. */
 button, a, select, input, textarea, summary, [role="button"], [tabindex]:not([tabindex="-1"]) {
   font-family: inherit;
 }
@@ -221,7 +225,7 @@ textarea:focus-visible,
 summary:focus-visible,
 [role="button"]:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
-  outline: 2px solid var(--accent-info);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -230,29 +234,91 @@ button {
   font-family: var(--font-sans);
 }
 
-/* Soft page fade-in on every load. Combined with the explicit fade-out
- * triggered by the save form, the post-save reload feels smooth rather
- * than a white flash. Respects prefers-reduced-motion. */
+/* ---------------------------------------------------------------------------
+ * Component helpers (small, reusable patterns from the Nextly aesthetic)
+ * ------------------------------------------------------------------------- */
+
+/* Indigo uppercase pretitle chip — the small "PHASE 1" / "FEATURED" lozenge
+   you see above section headings on Nextly-style landings. */
+.pretitle {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+}
+
+/* Primary CTA button — used inline as <a className="btn-primary"> or
+   <button className="btn-primary">. */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  transition: background-color 150ms ease;
+}
+.btn-primary:hover { background: var(--accent-primary-strong); color: #ffffff; text-decoration: none; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.btn-secondary:hover { background: var(--bg-elevated); border-color: var(--accent-primary); color: var(--fg); text-decoration: none; }
+
+/* Indigo icon tile — the small rounded square that holds a feature icon
+   in the Nextly "benefits" pattern. Use as: <div className="icon-tile">… */
+.icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  background: var(--accent-primary-tint);
+  color: #ffffff;
+  border-radius: var(--radius-md);
+}
+
+/* Full-width indigo CTA banner — for end-of-page calls to action. */
+.cta-banner {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+}
+.cta-banner a, .cta-banner h2 { color: #ffffff; }
+
+/* Soft page fade-in. */
 @keyframes page-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-body {
-  animation: page-fade-in 250ms ease-out both;
-}
-@media (prefers-reduced-motion: reduce) {
-  body { animation: none; }
-}
+body { animation: page-fade-in 250ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { body { animation: none; } }
 
-/* Skip-to-content link — visually hidden until focused, then floats top-left. */
+/* Skip-to-content link */
 .skip-to-content {
   position: absolute;
   left: 0.5rem;
   top: 0.5rem;
   z-index: 100;
   padding: 0.5rem 0.75rem;
-  background: var(--accent-info);
-  color: #000;
+  background: var(--accent-primary);
+  color: #ffffff;
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   border-radius: var(--radius-md);

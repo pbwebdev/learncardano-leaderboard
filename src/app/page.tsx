@@ -8,56 +8,85 @@ export default async function HomePage() {
   const signedIn = !!stakeAddress;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-4xl font-bold tracking-tight text-[color:var(--fg-heading)]">
-        Learn Cardano Leaderboard
-      </h1>
-      <p className="mt-4 text-lg text-[color:var(--fg-muted)]">
-        Complete on-chain and social tasks across partnered Cardano projects.
-        Earn points, token rewards, and a place on the public leaderboard —
-        with every payout verified on-chain.
-      </p>
+    <main className="mx-auto max-w-5xl px-8 py-20 xl:px-0">
+      <section className="max-w-3xl">
+        <span className="pretitle">Cardano Quest Hub</span>
+        <h1 className="mt-3 text-[color:var(--fg-heading)] font-bold tracking-tight">
+          Earn ADA rewards across partnered Cardano projects
+        </h1>
+        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-[color:var(--fg-muted)] xl:text-xl">
+          Complete on-chain and social tasks, climb a public leaderboard, and
+          collect token rewards — every payout verified on-chain. Sign in with
+          any CIP-30 wallet, no email, no password.
+        </p>
 
-      {signedIn ? (
-        <div className="mt-10 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
-          <p className="text-sm text-[color:var(--fg-muted)]">
-            Welcome back.
-          </p>
-          <p className="mt-1 font-mono text-xs text-[color:var(--fg)]">
-            {stakeAddress.slice(0, 16)}…{stakeAddress.slice(-8)}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              href="/me"
-              className="rounded-[--radius-md] bg-[color:var(--accent-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[color:var(--accent-primary-strong)]"
-            >
-              Go to my dashboard
-            </Link>
-            <Link
-              href="/leaderboard"
-              className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-4 py-2 text-sm hover:bg-[color:var(--bg-elevated)]"
-            >
-              View leaderboard
-            </Link>
+        {signedIn ? (
+          <div className="mt-10 flex flex-wrap items-center gap-4">
+            <Link href="/me" className="btn-primary">Go to my dashboard</Link>
+            <Link href="/leaderboard" className="btn-secondary">View leaderboard</Link>
+            <span className="font-mono text-xs text-[color:var(--fg-faint)]">
+              signed in as {stakeAddress.slice(0, 12)}…{stakeAddress.slice(-6)}
+            </span>
           </div>
-        </div>
-      ) : (
-        <div className="mt-10 rounded-[--radius-md] border border-dashed border-[color:var(--border-strong)] bg-[color:var(--bg-elevated)] p-6 font-sans">
-          <h2 className="text-base font-semibold text-[color:var(--fg-heading)]">
-            Connect your wallet from the header to get started
-          </h2>
-          <p className="mt-2 text-sm text-[color:var(--fg-muted)]">
-            Sign in with any CIP-30 Cardano wallet (Eternl, Lace, Nami, Typhon,
-            and more). No password, no email — your stake address is your
-            identity. Points and rewards are tied to that stake key.
-          </p>
-          <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-[color:var(--fg-muted)]">
-            <li>Click <strong>Connect wallet</strong> in the header.</li>
-            <li>Approve the connection in your wallet.</li>
-            <li>Sign the one-time login message — no transaction, no fees.</li>
-          </ol>
-        </div>
+        ) : (
+          <div className="mt-10 flex flex-wrap items-center gap-4">
+            <span className="btn-primary cursor-default opacity-90 select-none">Connect wallet ↗</span>
+            <span className="text-sm text-[color:var(--fg-faint)]">
+              Use the <strong>Connect wallet</strong> button in the header.
+            </span>
+          </div>
+        )}
+      </section>
+
+      {!signedIn && (
+        <section className="mt-20 grid gap-8 md:grid-cols-3">
+          <Feature
+            title="Sign in with your wallet"
+            body="Any CIP-30 Cardano wallet works — Eternl, Lace, Nami, Typhon, and more. Your stake address is your identity; no password, no email, no fees."
+          />
+          <Feature
+            title="Complete partnered tasks"
+            body="Delegate to a pool, swap on a DEX, share a campaign post — each verified task adds points to your public ranking."
+          />
+          <Feature
+            title="Get paid on-chain"
+            body="Partner rewards land in the same wallet you signed in with. Every payout tx is verified on-chain before the leaderboard marks it settled."
+          />
+        </section>
       )}
+
+      <section className="mt-24">
+        <div className="cta-banner flex flex-wrap items-center justify-between gap-6">
+          <div>
+            <h2 className="text-2xl font-semibold lg:text-3xl">Run a Cardano project?</h2>
+            <p className="mt-2 text-sm opacity-90 lg:text-base">
+              Partner with Learn Cardano to launch a campaign — verified tasks, on-chain rewards, transparent payouts.
+            </p>
+          </div>
+          <a
+            href="https://learncardano.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-[--radius-md] bg-white px-6 py-3 font-semibold text-[color:var(--accent-primary)] hover:opacity-90"
+          >
+            Get in touch
+          </a>
+        </div>
+      </section>
     </main>
+  );
+}
+
+function Feature({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <div className="icon-tile">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </div>
+      <h3 className="mt-4 text-lg font-semibold text-[color:var(--fg-heading)]">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-[color:var(--fg-muted)]">{body}</p>
+    </div>
   );
 }
