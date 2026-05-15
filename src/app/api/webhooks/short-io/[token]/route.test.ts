@@ -1,24 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Route-level tests for the Short.io webhook. We mock the DB layer at the
- * `getDb()` boundary so we can assert insert calls without standing up a
- * real D1 instance.
+ * Route-level tests for the Short.io webhook (URL-as-secret auth).
+ * Mock the DB at the getDb() boundary; assert insert calls without
+ * standing up a real D1.
  */
-
-async function hmacHex(secret: string, body: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
-  return Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 interface DbState {
   trackedLinkRow: { id: string; dubLinkId: string; userRefCode: string | null } | null;
@@ -31,8 +17,6 @@ interface DbState {
 let dbState: DbState;
 
 function makeDbStub() {
-  // Mimic the drizzle chainable surface used by the route. Each chain
-  // ends in a thenable / array-like returning a Promise.
   const trackedLinksSelect = {
     from: () => ({
       where: () => ({
@@ -49,8 +33,6 @@ function makeDbStub() {
   };
   return {
     select: (_cols?: unknown) => {
-      // Cheap discriminator: first select() call in the handler is for
-      // trackedLinks, second is for users.
       const which = dbState._selectCount++;
       return which === 0 ? trackedLinksSelect : usersSelect;
     },
@@ -71,18 +53,16 @@ vi.mock("@/db/client", () => ({
   },
 }));
 
-// Mutable env so individual tests can simulate the "secret missing" case
-// without resetting modules (which would undo our DB mock).
-const mockEnv: { SHORTIO_WEBHOOK_SECRET?: string } = { SHORTIO_WEBHOOK_SECRET: "shh" };
+const mockEnv: { SHORTIO_WEBHOOK_TOKEN?: string } = { SHORTIO_WEBHOOK_TOKEN: "expected-token" };
 
 vi.mock("@opennextjs/cloudflare", () => ({
   getCloudflareContext: () => ({ env: mockEnv }),
 }));
 
-// Drizzle's `eq` and the schema imports go through unchanged — the stub
-// above ignores the `where(...)` argument entirely.
-
-let POST: (req: Request) => Promise<Response>;
+let POST: (
+  req: Request,
+  ctx: { params: Promise<{ token: string }> },
+) => Promise<Response>;
 
 beforeEach(async () => {
   dbState = {
@@ -92,39 +72,43 @@ beforeEach(async () => {
     insertThrows: null,
     _selectCount: 0,
   };
-  mockEnv.SHORTIO_WEBHOOK_SECRET = "shh";
+  mockEnv.SHORTIO_WEBHOOK_TOKEN = "expected-token";
   const mod = await import("./route");
   POST = mod.POST;
 });
 
-afterEach(() => {
-  // Intentionally do NOT resetModules — we'd lose the top-level mocks.
-});
-
-function makeReq(body: string, sig: string | null): Request {
-  const headers = new Headers({ "content-type": "application/json" });
-  if (sig) headers.set("x-short-signature", sig);
-  return new Request("https://leaderboard.learncardano.io/api/webhooks/short-io", {
+function makeReq(body: string): Request {
+  return new Request("https://leaderboard.learncardano.io/api/webhooks/short-io/anything", {
     method: "POST",
-    headers,
+    headers: { "content-type": "application/json" },
     body,
   });
 }
 
-describe("short-io webhook route", () => {
-  it("503 when secret missing", async () => {
-    delete mockEnv.SHORTIO_WEBHOOK_SECRET;
-    const res = await POST(makeReq("{}", "deadbeef"));
+function makeParams(token: string) {
+  return { params: Promise.resolve({ token }) };
+}
+
+describe("short-io webhook route (URL-as-secret)", () => {
+  it("503 when SHORTIO_WEBHOOK_TOKEN env unset", async () => {
+    delete mockEnv.SHORTIO_WEBHOOK_TOKEN;
+    const res = await POST(makeReq("{}"), makeParams("expected-token"));
     expect(res.status).toBe(503);
   });
 
-  it("401 when signature missing", async () => {
-    const res = await POST(makeReq("{}", null));
+  it("401 when path token mismatches the env token", async () => {
+    const res = await POST(makeReq("{}"), makeParams("wrong-token"));
     expect(res.status).toBe(401);
   });
 
-  it("401 on bad signature", async () => {
-    const res = await POST(makeReq('{"link":{"id":"L1"}}', "deadbeef"));
+  it("401 when path token is empty", async () => {
+    const res = await POST(makeReq("{}"), makeParams(""));
+    expect(res.status).toBe(401);
+  });
+
+  it("401 even when only the length matches (constant-time guard)", async () => {
+    // Same length as "expected-token" (14 chars) but different bytes.
+    const res = await POST(makeReq("{}"), makeParams("xxxxxxxxxxxxxx"));
     expect(res.status).toBe(401);
   });
 
@@ -139,8 +123,7 @@ describe("short-io webhook route", () => {
       userAgent: "ua/1",
       clickedAt: "2026-01-01T00:00:00Z",
     });
-    const sig = await hmacHex("shh", body);
-    const res = await POST(makeReq(body, sig));
+    const res = await POST(makeReq(body), makeParams("expected-token"));
     expect(res.status).toBe(200);
     expect(dbState.insertCalls).toHaveLength(1);
     const row = dbState.insertCalls[0];
@@ -158,8 +141,7 @@ describe("short-io webhook route", () => {
   it("200 + drops unknown link", async () => {
     dbState.trackedLinkRow = null;
     const body = JSON.stringify({ link: { id: "L_missing" } });
-    const sig = await hmacHex("shh", body);
-    const res = await POST(makeReq(body, sig));
+    const res = await POST(makeReq(body), makeParams("expected-token"));
     expect(res.status).toBe(200);
     expect(dbState.insertCalls).toHaveLength(0);
     const json = (await res.json()) as { dropped?: string };
@@ -170,17 +152,22 @@ describe("short-io webhook route", () => {
     dbState.trackedLinkRow = { id: "tl-1", dubLinkId: "L1", userRefCode: null };
     dbState.insertThrows = new Error("UNIQUE constraint failed");
     const body = JSON.stringify({ link: { id: "L1" }, eventId: "evt-dup" });
-    const sig = await hmacHex("shh", body);
-    const res = await POST(makeReq(body, sig));
+    const res = await POST(makeReq(body), makeParams("expected-token"));
     expect(res.status).toBe(200);
   });
 
   it("200 + drops unrecognised payload shape", async () => {
     const body = JSON.stringify({ totally: "wrong" });
-    const sig = await hmacHex("shh", body);
-    const res = await POST(makeReq(body, sig));
+    const res = await POST(makeReq(body), makeParams("expected-token"));
     expect(res.status).toBe(200);
     const json = (await res.json()) as { dropped?: string };
     expect(json.dropped).toBe("unrecognised_shape");
+  });
+
+  it("200 + drops malformed JSON after valid token", async () => {
+    const res = await POST(makeReq("{not json"), makeParams("expected-token"));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { dropped?: string };
+    expect(json.dropped).toBe("malformed_json");
   });
 });

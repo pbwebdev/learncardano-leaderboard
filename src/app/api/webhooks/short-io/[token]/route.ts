@@ -3,69 +3,60 @@ import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/client";
 import { clickEvents, trackedLinks, users } from "@/db/schema";
-import { verifyHmacSha256 } from "./hmac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Short.io webhook receiver. Phase 3.
+ * Short.io webhook receiver — URL-as-secret auth.
  *
- * Replaces the old Dub.co receiver. Schema columns kept the historical
- * `dub_*` names (see schema.ts) — they're treated as opaque "external
- * link id" / "external event id" values from whichever provider we're
- * currently on. Don't rename without a migration.
+ * Short.io's standard tier doesn't surface a webhook signing secret, so we
+ * authenticate the request by embedding an unguessable random token into
+ * the webhook URL itself:
  *
- * ─── Documentation gaps ────────────────────────────────────────────────
- * Short.io's public API reference doesn't fully spell out their webhook
- * payload schema or signature header at scrape-time, so the following are
- * documented assumptions. After the first real click fires in production,
- * verify and adjust if needed (only this file + the field names below).
+ *   POST /api/webhooks/short-io/<SHORTIO_WEBHOOK_TOKEN>
  *
- *   1. Signature header name. We accept any of:
- *        x-short-signature, x-signature, signature, x-webhook-signature
- *      Pick whichever the Short.io dashboard names when wiring the
- *      webhook; if it's a fifth thing, add it to the list.
+ * The token comes from `env.SHORTIO_WEBHOOK_TOKEN` (32 random bytes hex,
+ * generated via `openssl rand -hex 32`). The full URL is the credential —
+ * anyone with it can spoof clicks, so it lives only in the Short.io
+ * webhook config + as a Worker secret, never in source control.
  *
- *   2. HMAC algorithm: SHA-256 over the raw body, secret = the signing
- *      secret displayed in the Short.io webhook config.
- *
- *   3. Payload fields. We probe common spellings:
- *        link.id / linkId / link_id        → tracked_links.dub_link_id
- *        clickedAt / timestamp / created_at → ts
- *        country                            → country
- *        referer / referrer                 → referrer
- *        userAgent / ua / user_agent        → user_agent
- *        eventId / id                       → click_events.dub_event_id
+ * Schema columns still use the historical `dub_*` names (see schema.ts).
+ * Treat them as opaque "external link id" / "external event id" values
+ * from whatever provider we're on. Don't rename without a migration.
  *
  * ─── Behaviour ────────────────────────────────────────────────────────
- * - Returns 503 if SHORTIO_WEBHOOK_SECRET is unset.
- * - Returns 401 if signature is missing or invalid.
- * - Always returns 200 after a valid signature even if the payload is
+ * - Returns 503 if SHORTIO_WEBHOOK_TOKEN is unset.
+ * - Returns 401 if the path token doesn't match (constant-time compare).
+ * - Always returns 200 after a valid token even if the payload is
  *   unrecognised or the link is unknown — Short.io retries on non-2xx
  *   and we don't want a retry storm on app-side issues. Internal logs
  *   carry the diagnostic detail.
  * - Idempotency: dedupe by (tracked_link_id, dub_event_id) UNIQUE when
- *   the payload carries an event id; otherwise we fall back to a
- *   (tracked_link_id, ts) tuple within a 5-second window.
+ *   the payload carries an event id; otherwise (tracked_link_id, ts)
+ *   tuple via the same UNIQUE constraint.
+ *
+ * ─── Documentation gaps ────────────────────────────────────────────────
+ * Short.io's public API reference doesn't fully spell out their webhook
+ * payload schema at scrape-time, so the payload-field names below are
+ * documented assumptions. After the first real click fires in production,
+ * verify and adjust if needed (only this file).
  */
-export async function POST(req: Request) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ token: string }> },
+) {
   const { env } = getCloudflareContext();
-  const secret = (env as { SHORTIO_WEBHOOK_SECRET?: string }).SHORTIO_WEBHOOK_SECRET;
-  if (!secret) {
+  const expected = (env as { SHORTIO_WEBHOOK_TOKEN?: string }).SHORTIO_WEBHOOK_TOKEN;
+  if (!expected) {
     return NextResponse.json({ error: "webhook_not_configured" }, { status: 503 });
   }
+  const { token } = await params;
+  if (!constantTimeEqual(token, expected)) {
+    return new Response("bad_token", { status: 401 });
+  }
+
   const raw = await req.text();
-  const sig =
-    req.headers.get("x-short-signature") ??
-    req.headers.get("x-signature") ??
-    req.headers.get("signature") ??
-    req.headers.get("x-webhook-signature");
-  if (!sig) return new Response("missing_signature", { status: 401 });
-
-  const ok = await verifyHmacSha256(secret, raw, sig);
-  if (!ok) return new Response("bad_signature", { status: 401 });
-
   let payload: unknown;
   try {
     payload = JSON.parse(raw);
@@ -83,8 +74,6 @@ export async function POST(req: Request) {
   const db = getDb();
   const link = (await db.select().from(trackedLinks).where(eq(trackedLinks.dubLinkId, event.linkId)).limit(1))[0];
   if (!link) {
-    // Short.io link we don't know about — possibly created outside our
-    // flow in the Short.io dashboard. Log a short prefix and 200.
     console.warn("[webhook:short-io] unknown short link id", event.linkId.slice(0, 8));
     return NextResponse.json({ ok: true, dropped: "unknown_link" });
   }
@@ -113,11 +102,14 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-/**
- * Normalise the click payload from Short.io. We probe several spellings
- * because the public docs don't pin them down. See the assumptions block
- * at the top of this file.
- */
+/** Constant-time string compare to thwart timing attacks on the token. */
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 function normaliseClickEvent(payload: unknown): {
   linkId: string;
   eventId: string | null;
@@ -128,8 +120,6 @@ function normaliseClickEvent(payload: unknown): {
 } | null {
   if (payload == null || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
-  // Short.io sometimes nests the click under `data` or `event`; sometimes
-  // it's the top-level object.
   const data = (p.data ?? p.event ?? p) as Record<string, unknown>;
   const link = (data.link ?? p.link) as Record<string, unknown> | undefined;
 
