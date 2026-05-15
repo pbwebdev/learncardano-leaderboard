@@ -176,9 +176,21 @@ export default async function RootLayout({
             </span>
             <span>
               Build:{" "}
-              <code className="font-mono text-[color:var(--fg)]">
-                {process.env.NEXT_PUBLIC_BUILD_HASH ?? "unknown"}
-              </code>
+              {process.env.NEXT_PUBLIC_BUILD_HASH && process.env.NEXT_PUBLIC_BUILD_HASH !== "unknown" ? (
+                <a
+                  href={`https://github.com/pbwebdev/learncardano-leaderboard/commit/${process.env.NEXT_PUBLIC_BUILD_HASH}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-[color:var(--accent-info)] hover:underline"
+                  title="View commit on GitHub"
+                >
+                  <code className="font-mono text-[color:var(--fg)]">
+                    {process.env.NEXT_PUBLIC_BUILD_HASH}
+                  </code>
+                </a>
+              ) : (
+                <code className="font-mono text-[color:var(--fg)]">unknown</code>
+              )}
               <span className="ml-2 opacity-80">
                 {process.env.NEXT_PUBLIC_BUILD_TIME ? (
                   <LocalTime iso={process.env.NEXT_PUBLIC_BUILD_TIME} />
