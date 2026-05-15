@@ -97,3 +97,74 @@ export async function submitOnboarding(formData: FormData): Promise<void> {
     });
   }
 }
+
+/**
+ * Disconnect the user's X account. Clears the encrypted tokens AND the
+ * public identity fields (xUserId / xHandle) so the verifier flips to
+ * `no_x_account` on the next submission. Audit-logged.
+ *
+ * The tokens-at-rest are encrypted, but we still wipe them on disconnect
+ * so that a future DB compromise can't retroactively use an old session.
+ */
+export async function disconnectX(): Promise<void> {
+  const userId = await getCurrentStakeAddress();
+  const db = getDb();
+  const prev = (await db
+    .select({ xHandle: users.xHandle })
+    .from(users)
+    .where(eq(users.stakeAddress, userId))
+    .limit(1))[0];
+  if (!prev?.xHandle) return; // already disconnected — no-op
+  await db
+    .update(users)
+    .set({
+      xUserId: null,
+      xHandle: null,
+      xConnectedAt: null,
+      xAccessTokenEnc: null,
+      xRefreshTokenEnc: null,
+      xTokenExpiresAt: null,
+    })
+    .where(eq(users.stakeAddress, userId));
+  await logChange({
+    userId,
+    entityType: "user",
+    entityId: userId,
+    field: "x_handle",
+    oldValue: prev.xHandle,
+    newValue: null,
+  });
+}
+
+/**
+ * Disconnect the user's YouTube channel. Same pattern as disconnectX.
+ */
+export async function disconnectYoutube(): Promise<void> {
+  const userId = await getCurrentStakeAddress();
+  const db = getDb();
+  const prev = (await db
+    .select({ channelId: users.youtubeChannelId, channelTitle: users.youtubeChannelTitle })
+    .from(users)
+    .where(eq(users.stakeAddress, userId))
+    .limit(1))[0];
+  if (!prev?.channelId) return;
+  await db
+    .update(users)
+    .set({
+      youtubeChannelId: null,
+      youtubeChannelTitle: null,
+      youtubeConnectedAt: null,
+      youtubeAccessTokenEnc: null,
+      youtubeRefreshTokenEnc: null,
+      youtubeTokenExpiresAt: null,
+    })
+    .where(eq(users.stakeAddress, userId));
+  await logChange({
+    userId,
+    entityType: "user",
+    entityId: userId,
+    field: "youtube_channel",
+    oldValue: prev.channelTitle ?? prev.channelId,
+    newValue: null,
+  });
+}

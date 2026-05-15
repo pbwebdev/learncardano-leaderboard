@@ -5,7 +5,7 @@ import { getCurrentStakeAddressOrNull } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { projects, submissions, tasks, users } from "@/db/schema";
 import { getPointsFor } from "@/lib/points";
-import { setProfileVisibility } from "./actions";
+import { disconnectX, disconnectYoutube, setProfileVisibility } from "./actions";
 import { SaveForm } from "@/components/save-form";
 import { LocalTime } from "@/components/local-time";
 import { CopyRefCode } from "@/components/copy-ref-code";
@@ -118,11 +118,29 @@ export default async function MyDashboardPage() {
 
       <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
         <h2 className="text-lg font-semibold">Linked accounts</h2>
-        <ul className="mt-3 space-y-2 text-sm">
+        <p className="mt-1 text-xs text-[color:var(--fg-muted)]">
+          Linking an account lets the verifier confirm tweets and YouTube
+          comments you submit. Disconnect any time — your existing verified
+          submissions stay.
+        </p>
+        <ul className="mt-4 space-y-3 text-sm">
           <li className="flex items-center gap-3 flex-wrap">
             <span className="w-20 shrink-0 text-[color:var(--fg-muted)]">X</span>
             {xLinked ? (
-              <span>@{user!.xHandle}</span>
+              <>
+                <span className="rounded-full bg-[color:var(--status-green-bg)] px-2 py-0.5 text-xs text-[color:var(--status-green)]">
+                  ● Connected
+                </span>
+                <span className="font-mono">@{user!.xHandle}</span>
+                <SaveForm action={disconnectX} className="inline">
+                  <button
+                    type="submit"
+                    className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-2 py-1 text-xs hover:bg-[color:var(--bg-elevated)]"
+                  >
+                    Disconnect
+                  </button>
+                </SaveForm>
+              </>
             ) : (
               <a href="/api/oauth/x/start" className="underline tap-target inline-flex items-center">Connect X</a>
             )}
@@ -130,7 +148,20 @@ export default async function MyDashboardPage() {
           <li className="flex items-center gap-3 flex-wrap">
             <span className="w-20 shrink-0 text-[color:var(--fg-muted)]">YouTube</span>
             {ytLinked ? (
-              <span className="break-all">{user!.youtubeChannelTitle ?? user!.youtubeChannelId}</span>
+              <>
+                <span className="rounded-full bg-[color:var(--status-green-bg)] px-2 py-0.5 text-xs text-[color:var(--status-green)]">
+                  ● Connected
+                </span>
+                <span className="break-all">{user!.youtubeChannelTitle ?? user!.youtubeChannelId}</span>
+                <SaveForm action={disconnectYoutube} className="inline">
+                  <button
+                    type="submit"
+                    className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-2 py-1 text-xs hover:bg-[color:var(--bg-elevated)]"
+                  >
+                    Disconnect
+                  </button>
+                </SaveForm>
+              </>
             ) : (
               <a href="/api/oauth/youtube/start" className="underline tap-target inline-flex items-center">Connect YouTube</a>
             )}
