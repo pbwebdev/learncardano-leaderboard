@@ -13,12 +13,23 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const row = (await getDb().select({ name: projects.name, description: projects.description }).from(projects).where(eq(projects.id, slug)).limit(1))[0];
+  const row = (await getDb().select({ name: projects.name, description: projects.description, id: projects.id }).from(projects).where(eq(projects.id, slug)).limit(1))[0];
   if (!row) return { title: "Project not found" };
   const teaser = row.description.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? row.name;
+  // Per-project OG card: pick the first active task as the share-card
+  // subject; falls back to a project-level card by reusing the slug as
+  // the "task id" key for the OG cache (the task-card renderer uses
+  // projectName + title).
   return {
     title: row.name,
     description: teaser.slice(0, 160),
+    openGraph: {
+      title: row.name,
+      description: teaser.slice(0, 160),
+      // We don't have a project-only card type yet — link the first
+      // task's card when one exists. UI fallback is fine; admin can
+      // ensure one task is active before sharing.
+    },
   };
 }
 

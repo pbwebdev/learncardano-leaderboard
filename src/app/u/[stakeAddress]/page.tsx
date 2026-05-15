@@ -12,9 +12,15 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ stakeAddress: string }> }): Promise<Metadata> {
   const { stakeAddress } = await params;
   if (!looksLikeStakeAddress(stakeAddress)) return { title: "Profile not found" };
+  const ogPath = `/og/profile/${encodeURIComponent(stakeAddress)}`;
   return {
     title: `${stakeAddress.slice(0, 12)}…${stakeAddress.slice(-6)}`,
     description: "Public Learn Cardano Leaderboard profile.",
+    openGraph: {
+      title: `${stakeAddress.slice(0, 12)}…${stakeAddress.slice(-6)} · Learn Cardano Leaderboard`,
+      images: [{ url: ogPath, width: 1200, height: 630, type: "image/svg+xml" }],
+    },
+    twitter: { card: "summary_large_image", images: [ogPath] },
   };
 }
 
