@@ -1,11 +1,15 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { desc, eq } from "drizzle-orm";
 import { getCurrentStakeAddressOrNull } from "@/lib/auth";
 import { getDb } from "@/db/client";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { projects, submissions, tasks, users } from "@/db/schema";
+import { getPointsFor } from "@/lib/points";
 import { setProfileVisibility } from "./actions";
 import { SaveForm } from "@/components/save-form";
+import { LocalTime } from "@/components/local-time";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function MyDashboardPage() {
@@ -14,14 +18,34 @@ export default async function MyDashboardPage() {
     redirect("/");
   }
 
-  const rows = await getDb().select().from(users).where(eq(users.stakeAddress, stakeAddress)).limit(1);
-  const user = rows[0];
-
+  const db = getDb();
+  const userRows = await db.select().from(users).where(eq(users.stakeAddress, stakeAddress)).limit(1);
+  const user = userRows[0];
   if (user && !user.onboardingCompleted) {
     redirect("/me/onboarding");
   }
-
   const visibility = user?.profileVisibility ?? "public";
+
+  const [points, recent] = await Promise.all([
+    getPointsFor(stakeAddress),
+    db
+      .select({
+        id: submissions.id,
+        status: submissions.status,
+        submittedAt: submissions.submittedAt,
+        verifiedAt: submissions.verifiedAt,
+        taskTitle: tasks.title,
+        taskPoints: tasks.points,
+        projectName: projects.name,
+        projectId: projects.id,
+      })
+      .from(submissions)
+      .innerJoin(tasks, eq(tasks.id, submissions.taskId))
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .where(eq(submissions.userId, stakeAddress))
+      .orderBy(desc(submissions.submittedAt))
+      .limit(10),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -32,19 +56,36 @@ export default async function MyDashboardPage() {
 
       <section className="mt-8 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
         <h2 className="text-lg font-semibold">Points</h2>
-        <p className="mt-2 text-sm text-[color:var(--fg-muted)]">
-          Phase 1 will land project tasks, submissions, and the points ledger.
-          Your current balance will appear here.
-        </p>
-        <p className="mt-4 font-mono text-2xl text-[color:var(--fg)]">— pts</p>
+        <p className="mt-4 font-mono text-3xl text-[color:var(--fg)]">{points} <span className="text-base text-[color:var(--fg-muted)]">pts</span></p>
+        {visibility === "public" && (
+          <p className="mt-2 text-xs text-[color:var(--fg-muted)]">
+            Your public profile is at <Link className="underline" href={`/u/${stakeAddress}`}>/u/{stakeAddress.slice(0, 12)}…</Link>
+          </p>
+        )}
       </section>
 
       <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
         <h2 className="text-lg font-semibold">Recent submissions</h2>
-        <p className="mt-2 text-sm text-[color:var(--fg-muted)]">
-          No submissions yet. When task verification ships in Phase 1 your
-          history will appear here.
-        </p>
+        {recent.length === 0 ? (
+          <p className="mt-2 text-sm text-[color:var(--fg-muted)]">No submissions yet. <Link href="/projects" className="underline">Browse projects</Link> to get started.</p>
+        ) : (
+          <ul className="mt-3 space-y-2 text-sm">
+            {recent.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-baseline gap-2">
+                <StatusPill status={r.status} />
+                <Link href={`/projects/${r.projectId}`} className="font-medium underline">{r.projectName}</Link>
+                <span className="text-[color:var(--fg-muted)]">·</span>
+                <span>{r.taskTitle}</span>
+                <span className="ml-auto text-xs text-[color:var(--fg-muted)]">
+                  <LocalTime iso={r.submittedAt.toISOString()} />
+                  {r.status === "verified" && r.taskPoints !== 0 && (
+                    <span className="ml-2">+{r.taskPoints} pts</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
@@ -74,4 +115,16 @@ export default async function MyDashboardPage() {
       </section>
     </main>
   );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const colour = {
+    pending: "bg-yellow-200 text-yellow-900",
+    verified: "bg-green-200 text-green-900",
+    rejected: "bg-red-200 text-red-900",
+    verifying: "bg-blue-200 text-blue-900",
+    paid: "bg-purple-200 text-purple-900",
+    reward_verified: "bg-emerald-200 text-emerald-900",
+  }[status] ?? "bg-gray-200 text-gray-900";
+  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${colour}`}>{status}</span>;
 }

@@ -1,10 +1,22 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { looksLikeStakeAddress } from "@/lib/stake-address";
+import { getPointsFor, getVerifiedCountFor, getProjectsEngagedFor } from "@/lib/points";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ stakeAddress: string }> }): Promise<Metadata> {
+  const { stakeAddress } = await params;
+  if (!looksLikeStakeAddress(stakeAddress)) return { title: "Profile not found" };
+  return {
+    title: `${stakeAddress.slice(0, 12)}…${stakeAddress.slice(-6)}`,
+    description: "Public Learn Cardano Leaderboard profile.",
+  };
+}
 
 /**
  * Public profile page. Returns notFound() unless the user has
@@ -38,6 +50,12 @@ export default async function PublicProfilePage({
     notFound();
   }
 
+  const [points, verified, projectsEngaged] = await Promise.all([
+    getPointsFor(stakeAddress),
+    getVerifiedCountFor(stakeAddress),
+    getProjectsEngagedFor(stakeAddress),
+  ]);
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-3xl font-bold tracking-tight">
@@ -47,12 +65,10 @@ export default async function PublicProfilePage({
         {stakeAddress.slice(0, 16)}…{stakeAddress.slice(-8)}
       </p>
 
-      <section className="mt-8 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
-        <h2 className="text-lg font-semibold">Points</h2>
-        <p className="mt-2 font-mono text-2xl text-[color:var(--fg)]">— pts</p>
-        <p className="mt-2 text-xs text-[color:var(--fg-muted)]">
-          Public points totals land in Phase 1.
-        </p>
+      <section className="mt-8 grid grid-cols-3 gap-3 text-center">
+        <Stat label="Points" value={points || "—"} />
+        <Stat label="Verified tasks" value={verified || "—"} />
+        <Stat label="Projects engaged" value={projectsEngaged || "—"} />
       </section>
 
       {user.refCode && (
@@ -64,5 +80,14 @@ export default async function PublicProfilePage({
         </section>
       )}
     </main>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+      <div className="font-mono text-2xl">{value}</div>
+      <div className="mt-1 text-xs text-[color:var(--fg-muted)]">{label}</div>
+    </div>
   );
 }
