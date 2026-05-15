@@ -13,11 +13,16 @@ import { CopyRefCode } from "@/components/copy-ref-code";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function MyDashboardPage() {
+export default async function MyDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ xLink?: string; ytLink?: string }>;
+}) {
   const stakeAddress = await getCurrentStakeAddressOrNull();
   if (!stakeAddress) {
     redirect("/");
   }
+  const { xLink, ytLink } = await searchParams;
 
   const db = getDb();
   const userRows = await db.select().from(users).where(eq(users.stakeAddress, stakeAddress)).limit(1);
@@ -54,8 +59,25 @@ export default async function MyDashboardPage() {
   const xLinked = !!user?.xHandle;
   const ytLinked = !!user?.youtubeChannelId;
 
+  const oauthAlert = resolveOAuthAlert(xLink, ytLink);
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+      {oauthAlert && (
+        <div
+          role={oauthAlert.kind === "ok" ? "status" : "alert"}
+          className={`mb-6 rounded-[--radius-md] border p-4 text-sm ${
+            oauthAlert.kind === "ok"
+              ? "border-[color:var(--status-green)]/40 bg-[color:var(--status-green-bg)] text-[color:var(--status-green)]"
+              : oauthAlert.kind === "warn"
+                ? "border-[color:var(--status-amber)]/40 bg-[color:var(--status-amber-bg)] text-[color:var(--status-amber)]"
+                : "border-[color:var(--status-red)]/40 bg-[color:var(--status-red-bg)] text-[color:var(--status-red)]"
+          }`}
+        >
+          <p className="font-semibold">{oauthAlert.title}</p>
+          <p className="mt-1 opacity-90">{oauthAlert.body}</p>
+        </div>
+      )}
       <h1 className="text-3xl font-bold tracking-tight">My dashboard</h1>
       <p className="mt-2 font-mono text-xs text-[color:var(--fg-muted)] break-all">
         {stakeAddress.slice(0, 16)}…{stakeAddress.slice(-8)}
@@ -208,4 +230,49 @@ function StatusPill({ status }: { status: string }) {
     reward_verified: "bg-emerald-200 text-emerald-900",
   }[status] ?? "bg-gray-200 text-gray-900";
   return <span className={`rounded px-2 py-0.5 text-xs font-medium ${colour}`}>{status}</span>;
+}
+
+interface OAuthAlert {
+  kind: "ok" | "warn" | "error";
+  title: string;
+  body: string;
+}
+
+/**
+ * Map ?xLink= / ?ytLink= callback query strings to a banner config.
+ * The OAuth callback routes append these on every round trip so the user
+ * always sees what happened on /me.
+ */
+function resolveOAuthAlert(xLink: string | undefined, ytLink: string | undefined): OAuthAlert | null {
+  if (xLink) {
+    switch (xLink) {
+      case "ok":
+        return { kind: "ok", title: "X connected", body: "Your X account is linked. Tweet-based tasks will now verify automatically." };
+      case "denied":
+        return { kind: "warn", title: "X connection cancelled", body: "You denied the authorisation request. Click Connect X to try again." };
+      case "exchange_failed":
+        return { kind: "error", title: "X sign-in failed", body: "We could not exchange the authorisation code for an access token. Double-check the app credentials in the Worker secrets and try again." };
+      case "identity_failed":
+        return { kind: "error", title: "X identity lookup failed", body: "We got a token but the call to X to read your handle failed. Confirm the app has read access to users and try again." };
+      default:
+        return { kind: "error", title: "X sign-in error", body: `Provider returned: ${xLink}` };
+    }
+  }
+  if (ytLink) {
+    switch (ytLink) {
+      case "ok":
+        return { kind: "ok", title: "YouTube connected", body: "Your YouTube channel is linked. Comment-based tasks will now verify automatically." };
+      case "denied":
+        return { kind: "warn", title: "YouTube connection cancelled", body: "You denied the authorisation request. Click Connect YouTube to try again." };
+      case "exchange_failed":
+        return { kind: "error", title: "YouTube sign-in failed", body: "We could not exchange the authorisation code for an access token. Confirm the Google client ID and secret on the Worker and try again." };
+      case "channel_failed":
+        return { kind: "error", title: "YouTube channel lookup failed", body: "The token worked but the YouTube API call was rejected. Make sure YouTube Data API v3 is enabled on your Google Cloud project and the consent screen includes the youtube.readonly scope." };
+      case "no_channel":
+        return { kind: "warn", title: "No YouTube channel found", body: "Your Google account does not have a YouTube channel. Create one at youtube.com and try again." };
+      default:
+        return { kind: "error", title: "YouTube sign-in error", body: `Provider returned: ${ytLink}` };
+    }
+  }
+  return null;
 }
