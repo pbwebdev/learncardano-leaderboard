@@ -15,7 +15,11 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "seed:test:local": "wrangler d1 execute DB --local --file=scripts/seed-test-data.sql",
+    "seed:test:remote": "wrangler d1 execute DB --remote --file=scripts/seed-test-data.sql",
+    "clean:test:local": "wrangler d1 execute DB --local --file=scripts/clean-test-data.sql",
+    "clean:test:remote": "wrangler d1 execute DB --remote --file=scripts/clean-test-data.sql"
   },
   "dependencies": {
     "@cardano-foundation/cardano-connect-with-wallet": "^0.2.20",
