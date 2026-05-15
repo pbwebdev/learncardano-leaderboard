@@ -160,10 +160,13 @@ export async function getPointsLeaderboard(limit = 100): Promise<LeaderboardRow[
 // ---------------- KV cache for the public leaderboard ----------------
 
 const KV_LEADERBOARD_PREFIX = "leaderboard:top-";
-// Read-side staleness backstop. The hourly cron refreshes every 60min, so a
-// 60s read-side TTL means the page never serves data older than 60s + cron
-// drift.
-const READ_FRESHNESS_MS = 60_000;
+// Read-side staleness window. The hourly cron is the primary writer; this
+// is a cold-start backstop. Bumped from 60s → 5min because Cloudflare KV
+// free tier is 1k writes/day per namespace, and every RSC prefetch hitting
+// the page within the freshness window would otherwise re-write the cache.
+// Five minutes keeps the page fresh enough for a leaderboard while staying
+// well under the daily write quota.
+const READ_FRESHNESS_MS = 5 * 60 * 1000;
 // Write TTL — long enough that stale cron writes can't displace fresh ones,
 // short enough that cache entries auto-evict if the cron stops running.
 const WRITE_TTL_SECONDS = 65 * 60;
@@ -198,12 +201,26 @@ export async function getCachedLeaderboard(limit = 100): Promise<LeaderboardRow[
   const kv = getKv();
   if (!kv) return getPointsLeaderboard(limit);
   const key = `${KV_LEADERBOARD_PREFIX}${limit}`;
-  const hit = await kv.get<CachedLeaderboard>(key, "json");
+  let hit: CachedLeaderboard | null = null;
+  try {
+    hit = await kv.get<CachedLeaderboard>(key, "json");
+  } catch (e) {
+    console.warn("[leaderboard] kv.get failed, falling back to D1", e instanceof Error ? e.message : e);
+  }
   if (hit && typeof hit.fetchedAt === "number" && Date.now() - hit.fetchedAt < READ_FRESHNESS_MS) {
     return hit.rows;
   }
   const rows = await getPointsLeaderboard(limit);
-  await kv.put(key, JSON.stringify({ fetchedAt: Date.now(), rows }), { expirationTtl: WRITE_TTL_SECONDS });
+  // KV.put failures are never fatal — Cloudflare KV free tier is 1k
+  // writes/day per namespace, and hitting that cap should not 500 the
+  // public leaderboard. The hourly cron will refresh again on the next
+  // tick (which counts as a single write per limit). For now serve the
+  // freshly-computed rows directly.
+  try {
+    await kv.put(key, JSON.stringify({ fetchedAt: Date.now(), rows }), { expirationTtl: WRITE_TTL_SECONDS });
+  } catch (e) {
+    console.warn("[leaderboard] kv.put failed, serving direct", e instanceof Error ? e.message : e);
+  }
   return rows;
 }
 
@@ -221,8 +238,14 @@ export async function refreshLeaderboardCache(limit = 100): Promise<void> {
   }
   const rows = await getPointsLeaderboard(limit);
   const key = `${KV_LEADERBOARD_PREFIX}${limit}`;
-  await kv.put(key, JSON.stringify({ fetchedAt: Date.now(), rows }), { expirationTtl: WRITE_TTL_SECONDS });
-  console.log("[leaderboard] kv cache refreshed", { limit, rowCount: rows.length });
+  try {
+    await kv.put(key, JSON.stringify({ fetchedAt: Date.now(), rows }), { expirationTtl: WRITE_TTL_SECONDS });
+    console.log("[leaderboard] kv cache refreshed", { limit, rowCount: rows.length });
+  } catch (e) {
+    // Most likely "KV put() limit exceeded for the day" on free tier.
+    // Cron will try again on the next tick; nothing else to do.
+    console.warn("[leaderboard] kv.put failed during cron refresh", e instanceof Error ? e.message : e);
+  }
 }
 
 /**
