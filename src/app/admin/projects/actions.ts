@@ -92,12 +92,16 @@ export async function updateProject(formData: FormData): Promise<void> {
 
   const targetId = newSlug || id;
   const changes: Record<string, string | number | null> = {};
-  for (const f of ["name", "description", "websiteUrl", "referralUrl", "category", "status"] as const) {
+  for (const f of ["name", "description", "websiteUrl", "referralUrl", "category", "status", "partnerNotes"] as const) {
     const next = readString(formData, f);
-    if (next !== "" && next !== String(existing[f] ?? "")) {
-      if (f === "status" && !VALID_STATUSES.has(next)) throw new Error("invalid_status");
-      if (f === "category" && !VALID_CATEGORIES.has(next)) throw new Error("invalid_category");
-      changes[f] = next;
+    if (next !== String(existing[f] ?? "")) {
+      if (f === "status" && next !== "" && !VALID_STATUSES.has(next)) throw new Error("invalid_status");
+      if (f === "category" && next !== "" && !VALID_CATEGORIES.has(next)) throw new Error("invalid_category");
+      // Allow clearing partnerNotes by passing "" — stored as null.
+      // Other fields keep the legacy "skip on empty" semantics so a
+      // half-filled form doesn't wipe real data.
+      if (f === "partnerNotes") changes[f] = next === "" ? null : next;
+      else if (next !== "") changes[f] = next;
     }
   }
   const order = Number(readString(formData, "displayOrder") || String(existing.displayOrder));

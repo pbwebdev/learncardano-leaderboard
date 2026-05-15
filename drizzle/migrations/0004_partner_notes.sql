@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `partner_notes` text;

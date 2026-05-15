@@ -98,6 +98,11 @@ export const projects = sqliteTable("projects", {
     .default(sql`(unixepoch('subsec') * 1000)`),
   // Anything before this is ineligible for on-chain tasks (Phase 2+).
   campaignStartDate: integer("campaign_start_date", { mode: "timestamp_ms" }),
+  // Admin-only free-form notes from partner discovery — script hash,
+  // redeemer tag, constructor index, mint policy etc. as the partner
+  // shares them via DM. Never exposed publicly. Copy values from here
+  // into the task config when wiring tx_swap strict verification.
+  partnerNotes: text("partner_notes"),
 });
 
 /**

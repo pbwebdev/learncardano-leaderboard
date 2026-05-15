@@ -84,6 +84,24 @@ export default async function AdminProjectEditPage({ params }: { params: Promise
           <span>Campaign start date</span>
           <input name="campaignStartDate" type="date" defaultValue={project.campaignStartDate ? project.campaignStartDate.toISOString().slice(0, 10) : ""} className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />
         </label>
+        <fieldset className="md:col-span-2 mt-2 rounded border border-dashed border-[color:var(--border)] p-3">
+          <legend className="px-1 text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">
+            Partner discovery (admin-only, never shown publicly)
+          </legend>
+          <p className="mt-1 text-xs text-[color:var(--fg-muted)]">
+            Paste what the partner shared via DM — script hash, redeemer tag,
+            constructor index, mint policy, anything. Copy values from here
+            into the task config when wiring <code>tx_swap</code> strict
+            verification. Markdown is fine.
+          </p>
+          <textarea
+            name="partnerNotes"
+            rows={8}
+            defaultValue={project.partnerNotes ?? ""}
+            placeholder={"Contact: @handle (DM 2026-05-15)\n\nscript hash: …\nredeemer tag: spend\nctor 0 = …, ctor 1 = …\n\nmint policy: …"}
+            className="mt-2 w-full rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1 font-mono text-xs"
+          />
+        </fieldset>
         <button type="submit" className="mt-2 self-start rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Save changes</button>
       </SaveForm>
 

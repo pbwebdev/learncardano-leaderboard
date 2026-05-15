@@ -63,14 +63,12 @@ export default async function HomePage() {
               Partner with Learn Cardano to launch a campaign — verified tasks, on-chain rewards, transparent payouts.
             </p>
           </div>
-          <a
-            href="https://learncardano.io"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/partners"
             className="inline-flex items-center justify-center rounded-[--radius-md] bg-white px-6 py-3 font-semibold text-[color:var(--accent-primary)] hover:opacity-90 w-full md:w-auto"
           >
-            Get in touch
-          </a>
+            See what we need
+          </Link>
         </div>
       </section>
     </main>
