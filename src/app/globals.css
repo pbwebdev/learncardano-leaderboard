@@ -1,0 +1,263 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+ * Smashing-Magazine-inspired theme tokens.
+ * Source: https://www.smashingmagazine.com/css/article-dark-mode-v3.css
+ * Fonts: Roboto Slab (body) + Roboto (UI) — open-license fallbacks for
+ * Smashing's proprietary Elena/Mija stacks.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* Surfaces */
+  --bg: #ffffff;
+  --bg-elevated: #f7f7f7;
+  --bg-subtle: #f6f6f6;
+  --bg-code: #f4f1ee;
+  --surface-card: #ffffff;
+
+  /* Text — WCAG AA contrast targets against the white surface:
+     --fg     #2a2a2a → 13.7:1  (normal text, very strong)
+     --fg-muted #555555 → 7.4:1  (normal text, AAA)
+     --fg-faint #6a6a6a → 5.4:1  (normal text, AA; was #777777 ≈4.4:1 fail)
+     --fg-heading #111  → 18.9:1 */
+  --fg: #2a2a2a;
+  --fg-muted: #555555;
+  --fg-faint: #6a6a6a;
+  --fg-heading: #111111;
+
+  /* Accents (Smashing red as brand, blue as link/info) */
+  --accent-primary: #d33a2c;          /* Smashing red (light mode link/CTAs) */
+  --accent-primary-strong: #b62a1e;
+  --accent-info: #0168b8;             /* Smashing blue */
+  --accent-info-strong: #014e8d;
+  --accent-tertiary: #5e82ab;
+
+  /* Status (semantic) */
+  --status-green: #137d54;
+  --status-green-bg: #d6f3e7;
+  --status-amber: #8a6d00;
+  --status-amber-bg: #fbeaa3;
+  --status-red: #bc3428;
+  --status-red-bg: #fbebea;
+  --status-neutral: #555555;
+  --status-neutral-bg: #ececec;
+
+  /* Lines */
+  --border: #e5e3df;
+  --border-strong: #cbc7c0;
+  --rule: #d8d5cf;
+
+  /* Shadows */
+  --shadow-card: 1px 1px 6px rgba(0, 0, 0, 0.06);
+
+  /* Radius — Smashing keeps things mostly square; use small radii */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* Typography scale (Smashing uses generous sizing) */
+  --font-size-base: 1.1875rem;        /* 19px */
+  --font-size-sm: 1.0625rem;          /* 17px */
+  --font-size-xs: 0.9375rem;          /* 15px */
+  --line-height-base: 1.6;
+  --line-height-heading: 1.2;
+  --tracking-heading: -0.01em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Darker teal-navy palette (May 2026 contrast bump). The page sits
+       on solid near-black #061115; cards / tables lift to #162c35;
+       table headers and category bars sit between them at #11242d. */
+    --bg: #061115;
+    --bg-elevated: #11242d;
+    --bg-subtle: #0d1d24;
+    --bg-code: #1a2f38;
+    --surface-card: #162c35;
+
+    --fg: #e5e5e5;
+    --fg-muted: #bdddff;
+    --fg-faint: #94b3d2;
+    --fg-heading: #ffffff;
+
+    /* Darkened from Smashing's #f94962 (3.4:1 against white — AA fail for
+       normal text) to #cc1f3f (5.4:1 — AA pass). Used as the primary
+       button background where white text sits on top. */
+    --accent-primary: #cc1f3f;
+    --accent-primary-strong: #e64668;
+    --accent-info: #6fd2ff;           /* Cyan link colour */
+    --accent-info-strong: #a3e2ff;
+    --accent-tertiary: #bdddff;
+
+    --status-green: #adfbda;
+    --status-green-bg: rgba(54, 179, 12, 0.18);
+    --status-amber: #ebf38b;
+    --status-amber-bg: rgba(231, 177, 124, 0.18);
+    --status-red: #fda399;
+    --status-red-bg: rgba(249, 73, 98, 0.18);
+    --status-neutral: #bdddff;
+    --status-neutral-bg: rgba(189, 221, 255, 0.10);
+
+    --border: #244654;
+    --border-strong: #405c63;
+    --rule: #244654;
+
+    --shadow-card: 1px 1px 6px rgba(0, 0, 0, 0.25);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-surface: var(--surface-card);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-fg-heading: var(--fg-heading);
+  --color-accent: var(--accent-primary);
+  --color-accent-strong: var(--accent-primary-strong);
+  --color-link: var(--accent-info);
+  --color-link-strong: var(--accent-info-strong);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-rule: var(--rule);
+
+  --color-status-green: var(--status-green);
+  --color-status-green-bg: var(--status-green-bg);
+  --color-status-amber: var(--status-amber);
+  --color-status-amber-bg: var(--status-amber-bg);
+  --color-status-red: var(--status-red);
+  --color-status-red-bg: var(--status-red-bg);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-bg: var(--status-neutral-bg);
+
+  --font-serif: var(--font-serif), "Roboto Slab", "Droid Serif", Georgia, serif;
+  --font-sans: var(--font-sans), -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", system-ui, Arial, sans-serif;
+  --font-mono: "Fira Code", Menlo, "Courier New", Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+ * Base element styles
+ * ------------------------------------------------------------------------- */
+
+html {
+  font-size: 100%;
+}
+
+body {
+  background: var(--bg);
+  background-image: var(--bg-gradient, none);
+  color: var(--fg);
+  font-family: var(--font-serif), "Roboto Slab", "Droid Serif", Georgia, serif;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  font-feature-settings: "kern", "liga";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, Roboto, system-ui, Arial, sans-serif;
+  color: var(--fg-heading);
+  line-height: var(--line-height-heading);
+  letter-spacing: var(--tracking-heading);
+  font-weight: 700;
+}
+
+h1 { font-size: clamp(2rem, 1.6rem + 1.5vw, 2.75rem); }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.2rem; }
+
+a {
+  color: var(--accent-info);
+  text-decoration-color: color-mix(in srgb, var(--accent-info) 40%, transparent);
+  text-underline-offset: 2px;
+}
+a:hover { color: var(--accent-info-strong); text-decoration-color: currentColor; }
+
+code, kbd, pre, samp {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+:not(pre) > code {
+  background: var(--bg-code);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+
+::selection { background: rgba(52, 81, 113, 0.45); color: inherit; }
+
+/* Form controls — keep them readable on the dark gradient surface */
+select, input[type="text"], input[type="search"], textarea {
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.55rem;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+/* Consistent keyboard-focus ring on every interactive element. Browser
+ * defaults are too subtle on dark surfaces, and Tailwind preflight wipes
+ * the system outline. Use :focus-visible so mouse clicks don't show it. */
+button, a, select, input, textarea, summary, [role="button"], [tabindex]:not([tabindex="-1"]) {
+  font-family: inherit;
+}
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+button {
+  font-family: var(--font-sans);
+}
+
+/* Soft page fade-in on every load. Combined with the explicit fade-out
+ * triggered by the save form, the post-save reload feels smooth rather
+ * than a white flash. Respects prefers-reduced-motion. */
+@keyframes page-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+body {
+  animation: page-fade-in 250ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  body { animation: none; }
+}
+
+/* Skip-to-content link — visually hidden until focused, then floats top-left. */
+.skip-to-content {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  background: var(--accent-info);
+  color: #000;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-md);
+  transform: translateY(-200%);
+}
+.skip-to-content:focus {
+  transform: translateY(0);
+}
