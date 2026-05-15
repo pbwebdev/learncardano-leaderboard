@@ -15,6 +15,13 @@
       "when": 1778819608688,
       "tag": "0001_phase1_projects_tasks_submissions_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1778837719701,
+      "tag": "0002_phase3_oauth_referrals_links",
+      "breakpoints": true
     }
   ]
 }

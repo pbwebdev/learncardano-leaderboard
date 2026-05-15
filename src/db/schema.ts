@@ -33,9 +33,22 @@ export const users = sqliteTable("users", {
     .default(false),
 
   // Social OAuth links — populated in Phase 3.
+  // Tokens stored at-rest as base64url(iv|ciphertext|tag), AES-GCM with a
+  // key HKDF-derived from AUTH_SESSION_SECRET (see src/lib/crypto.ts). The
+  // app never logs them and only decrypts on the verifier path.
   xUserId: text("x_user_id"),
   xHandle: text("x_handle"),
+  xConnectedAt: integer("x_connected_at", { mode: "timestamp_ms" }),
+  xAccessTokenEnc: text("x_access_token_enc"),
+  xRefreshTokenEnc: text("x_refresh_token_enc"),
+  xTokenExpiresAt: integer("x_token_expires_at", { mode: "timestamp_ms" }),
+
   youtubeChannelId: text("youtube_channel_id"),
+  youtubeChannelTitle: text("youtube_channel_title"),
+  youtubeConnectedAt: integer("youtube_connected_at", { mode: "timestamp_ms" }),
+  youtubeAccessTokenEnc: text("youtube_access_token_enc"),
+  youtubeRefreshTokenEnc: text("youtube_refresh_token_enc"),
+  youtubeTokenExpiresAt: integer("youtube_token_expires_at", { mode: "timestamp_ms" }),
 
   // Public profile visibility — 'public' renders /u/[stakeAddress], 'private'
   // returns notFound(). Default 'public' so a freshly-onboarded user appears
@@ -176,4 +189,64 @@ export const pointsLedger = sqliteTable("points_ledger", {
 }, (t) => ({
   byUser: index("points_ledger_user_idx").on(t.userId),
   bySubmission: index("points_ledger_submission_idx").on(t.submissionId),
+}));
+
+/**
+ * Tracked links (Phase 3). Either a project-level link or a per-user
+ * referral link. Created via the Dub.co API client and mirrored here so
+ * we can resolve click webhooks back to a user and surface click counts
+ * on /me and /projects/[slug] without re-calling Dub.
+ *
+ *   - projectId+userRefCode null → unused
+ *   - projectId set, userRefCode null → the project's main referral link
+ *   - projectId set, userRefCode set → personalised referral link
+ *
+ * `dubLinkId` is UNIQUE so webhook deliveries land on exactly one row.
+ */
+export const trackedLinks = sqliteTable("tracked_links", {
+  id: text("id").primaryKey(), // uuid
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id),
+  taskId: text("task_id"), // nullable — most links are project-level
+  userRefCode: text("user_ref_code"), // nullable — resolved against users.refCode
+  dubLinkId: text("dub_link_id").notNull(),
+  shortUrl: text("short_url").notNull(),
+  destinationUrl: text("destination_url").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+}, (t) => ({
+  byDubLink: uniqueIndex("tracked_links_dub_link_unique").on(t.dubLinkId),
+  byProject: index("tracked_links_project_idx").on(t.projectId),
+  byRefCode: index("tracked_links_ref_code_idx").on(t.userRefCode),
+}));
+
+/**
+ * Click events (Phase 3) ingested from Dub webhooks. Append-only. The
+ * webhook handler dedupes via `(tracked_link_id, dub_event_id)` UNIQUE
+ * because Dub retries on non-2xx.
+ */
+export const clickEvents = sqliteTable("click_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  trackedLinkId: text("tracked_link_id")
+    .notNull()
+    .references(() => trackedLinks.id),
+  // Stable per-delivery ID from Dub (e.g. payload.click.id). Used for
+  // idempotency — Dub retries on transient failures.
+  dubEventId: text("dub_event_id"),
+  // Resolved from trackedLinks.userRefCode if present, else null.
+  userId: text("user_id"),
+  country: text("country"),
+  referrer: text("referrer"),
+  userAgent: text("user_agent"),
+  ts: integer("ts", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+}, (t) => ({
+  byLink: index("click_events_link_idx").on(t.trackedLinkId),
+  byUser: index("click_events_user_idx").on(t.userId),
+  // Dub event IDs are globally unique; constrain per-link in case they ever
+  // collide across links (defensive — Dub docs say they don't).
+  uniqEvent: uniqueIndex("click_events_link_event_unique").on(t.trackedLinkId, t.dubEventId),
 }));
