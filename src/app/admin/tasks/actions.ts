@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { getDb } from "@/db/client";
 import { tasks } from "@/db/schema";
 import { logChange } from "@/lib/audit";
-import { ALL_TASK_TYPES, isTaskTypeEnabledInPhase1 } from "@/lib/verification";
+import { ALL_TASK_TYPES, isAdminCreatableTaskType } from "@/lib/verification";
 import { parseManualReviewConfig } from "@/lib/verification/manual";
 
 const VALID_STATUSES = new Set(["draft", "active", "paused", "ended"]);
@@ -51,7 +51,7 @@ export async function createTask(formData: FormData): Promise<void> {
   if (!projectId) throw new Error("projectId_required");
   if (!title) throw new Error("title_required");
   if (!ALL_TASK_TYPES.includes(taskType as (typeof ALL_TASK_TYPES)[number])) throw new Error("invalid_task_type");
-  if (!isTaskTypeEnabledInPhase1(taskType as "manual_review")) throw new Error("task_type_disabled_phase1");
+  if (!isAdminCreatableTaskType(taskType as "manual_review")) throw new Error("task_type_not_admin_creatable");
 
   const taskConfig = buildTaskConfig(formData, taskType);
   const id = crypto.randomUUID();
@@ -95,7 +95,7 @@ export async function updateTask(formData: FormData): Promise<void> {
   if (!existing) throw new Error("task_not_found");
 
   const taskType = readString(formData, "taskType") || existing.taskType;
-  if (!isTaskTypeEnabledInPhase1(taskType as "manual_review")) throw new Error("task_type_disabled_phase1");
+  if (!isAdminCreatableTaskType(taskType as "manual_review")) throw new Error("task_type_not_admin_creatable");
 
   const status = readString(formData, "status") || existing.status;
   if (!VALID_STATUSES.has(status)) throw new Error("invalid_status");

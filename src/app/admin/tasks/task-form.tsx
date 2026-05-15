@@ -1,4 +1,4 @@
-import { ALL_TASK_TYPES, isTaskTypeEnabledInPhase1 } from "@/lib/verification";
+import { ALL_TASK_TYPES, isAdminCreatableTaskType, taskTypeLabelSuffix } from "@/lib/verification";
 
 /**
  * Shared task form fields. Rendered inside a <SaveForm> on the parent page
@@ -61,8 +61,8 @@ export function TaskFormFields(props: {
         <span>Task type</span>
         <select name="taskType" defaultValue={d.taskType || "manual_review"} required className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1">
           {ALL_TASK_TYPES.map((t) => (
-            <option key={t} value={t} disabled={!isTaskTypeEnabledInPhase1(t)}>
-              {t}{isTaskTypeEnabledInPhase1(t) ? "" : " (Phase 2)"}
+            <option key={t} value={t} disabled={!isAdminCreatableTaskType(t)}>
+              {t}{taskTypeLabelSuffix(t)}
             </option>
           ))}
         </select>

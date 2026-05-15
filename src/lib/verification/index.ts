@@ -85,6 +85,29 @@ export function isPhase3PlusTaskType(t: string): boolean {
   return (PHASE4_PLUS_TYPES as string[]).includes(t);
 }
 
+/**
+ * True when an admin can create a task of this type from /admin/tasks/new.
+ * Every wired verifier is admin-creatable — the user-submission gating is
+ * separate (manual_review + on-chain + OAuth come via the submit form;
+ * bounty_completion comes via webhook but still needs an admin-created
+ * task row to dispatch against, so admins must be able to create it).
+ */
+export function isAdminCreatableTaskType(t: string): boolean {
+  return (ALL_TASK_TYPES as string[]).includes(t);
+}
+
+/**
+ * Short user-facing label suffix for the admin dropdown — explains
+ * what verification path each type uses.
+ */
+export function taskTypeLabelSuffix(t: string): string {
+  if (t === "manual_review") return " · manual review";
+  if ((PHASE2_AUTO_TYPES as string[]).includes(t)) return " · on-chain";
+  if ((PHASE3_TYPES as string[]).includes(t)) return " · social OAuth";
+  if (t === "bounty_completion") return " · webhook-only";
+  return "";
+}
+
 export type { VerifierResult } from "./manual";
 
 /**
