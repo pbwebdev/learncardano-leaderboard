@@ -12,11 +12,38 @@ import { useEffect, useRef, useState, useTransition } from "react";
  *   2. Fade body opacity → 0 over 200ms (respects prefers-reduced-motion).
  *   3. Await the server action (passed as the form's `action` prop or via
  *      `onAction`).
- *   4. window.location.reload().
+ *   4. If the action threw a NEXT_REDIRECT signal, parse its target URL
+ *      and navigate there (so the receiving page sees the ?saved=1 /
+ *      ?created=1 query param and can render its success banner).
+ *      Otherwise reload the current URL.
  *   5. On mount in the new page, read sessionStorage and restore scroll
  *      using requestAnimationFrame so the layout has painted.
  */
 const SCROLL_KEY = "save-form:scrollY";
+
+interface NextRedirectErrorLike {
+  digest?: string;
+  message?: string;
+}
+
+/**
+ * Detect Next's redirect signal and pull the target URL out of its
+ * `digest` field. Next encodes the redirect as
+ *   "NEXT_REDIRECT;<kind>;<url>;<statusCode>;<basePath>"
+ * (semicolon-separated). We use the digest rather than importing
+ * `isRedirectError` from `next/navigation` because that helper isn't
+ * stable across Next versions — the digest format is what the
+ * framework's own internals consume.
+ */
+function extractRedirectTarget(e: unknown): string | null {
+  if (!e || typeof e !== "object") return null;
+  const digest = (e as NextRedirectErrorLike).digest;
+  if (typeof digest !== "string") return null;
+  if (!digest.startsWith("NEXT_REDIRECT")) return null;
+  const parts = digest.split(";");
+  const url = parts[2];
+  return url || null;
+}
 
 export function SaveForm({
   action,
@@ -59,10 +86,30 @@ export function SaveForm({
         sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
         setSubmitting(true);
         startTransition(async () => {
+          let redirectTo: string | null = null;
           try {
             await action(formData);
-          } finally {
-            await fadeOut();
+          } catch (e) {
+            redirectTo = extractRedirectTarget(e);
+            if (!redirectTo) {
+              // A real error (not a redirect signal). Let the user see
+              // fresh state by reloading; the action will have logged
+              // server-side. If we wanted to surface the error, this is
+              // where we'd setState({ error: ... }).
+              await fadeOut();
+              window.location.reload();
+              return;
+            }
+          }
+          await fadeOut();
+          if (redirectTo) {
+            // Server action called redirect(). Navigate to its target so
+            // the receiving page can read the ?saved=1 / ?created=1
+            // query param and render the success banner. Using
+            // location.assign (not reload) so the redirect target
+            // actually loads.
+            window.location.assign(redirectTo);
+          } else {
             window.location.reload();
           }
         });
