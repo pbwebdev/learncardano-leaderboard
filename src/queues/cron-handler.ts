@@ -15,18 +15,21 @@
  * `runWithCloudflareRequestContext` so `getCloudflareContext()` works.
  */
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import * as schema from "@/db/schema";
-import { pointsLedger, submissions, tasks, auditLog } from "@/db/schema";
-import { getAccountInfo, getDRepInfo } from "@/lib/cardano";
+import { pointsLedger, submissions, tasks, auditLog, partnerPayoutBatches } from "@/db/schema";
+import { getAccountInfo, getDRepInfo, getTxInfo } from "@/lib/cardano";
 import { refreshLeaderboardCache } from "@/lib/points";
 import { parsePoolDelegationConfig, parseDRepDelegationConfig } from "@/lib/verification/delegation";
 import { parseDRepRegisteredConfig } from "@/lib/verification/drep-activity";
 import { drepIdFromStakeAddress } from "@/lib/stake-address";
+import { compareCsvToTxOutputs, isWithinPaidAtWindow, parseCsv } from "@/lib/payouts";
 
 interface CronEnv {
   DB: unknown;
+  R2?: R2Bucket;
 }
 
 export async function handleScheduled(cron: string, env: CronEnv): Promise<void> {
@@ -39,6 +42,7 @@ export async function handleScheduled(cron: string, env: CronEnv): Promise<void>
       return;
     case "15 3 * * *":
       await reCheckDRepRegistrations(env);
+      await verifyPendingPayoutBatches(env);
       return;
     default:
       console.warn("[cron] unhandled cron expression:", cron);
@@ -186,4 +190,131 @@ async function applyClawback(
     newValue: `rejected:${reason}`,
   });
   console.log("[cron] clawback applied", { submissionId, taskId, points, reason });
+}
+
+// ---------- Partner payout batch on-chain verification (daily, 03:15 UTC) ----------
+
+/**
+ * For each partner_payout_batches row with txHash set + verifiedOnChain=0:
+ *   1. Fetch tx via the Cardano façade.
+ *   2. Confirm block_time is within ±24h of paidAt (sanity window).
+ *   3. Read CSV from R2, reconcile every row against tx outputs.
+ *   4. If all rows match → verifiedOnChain=1; submissions in this batch
+ *      move 'paid' → 'reward_verified'; clear any stale discrepancy.
+ *   5. On mismatch → write discrepancy_note. Submissions stay 'paid'.
+ *      The admin UI surfaces the report for follow-up. We DO NOT throw —
+ *      a single bad batch must not fail the entire cron tick.
+ *
+ * Uses the Cardano façade only (`getTxInfo`).
+ */
+async function verifyPendingPayoutBatches(env: CronEnv) {
+  const db = drizzle(env.DB as never, { schema });
+  const { env: cfEnv } = getCloudflareContext();
+  const r2 = (cfEnv as unknown as { R2?: R2Bucket }).R2 ?? env.R2;
+  if (!r2) {
+    console.warn("[cron:payouts] R2 binding missing — skipping payout verification");
+    return;
+  }
+
+  const pending = await db
+    .select()
+    .from(partnerPayoutBatches)
+    .where(and(isNotNull(partnerPayoutBatches.txHash), eq(partnerPayoutBatches.verifiedOnChain, false)));
+  if (pending.length === 0) return;
+
+  console.log("[cron:payouts] verifying", { count: pending.length });
+  for (const batch of pending) {
+    try {
+      await verifyOnePayoutBatch(db, r2, batch);
+    } catch (e) {
+      // Soft-fail: log + carry on with other batches. Next tick retries.
+      console.warn("[cron:payouts] batch verification threw", batch.id, e);
+    }
+  }
+}
+
+async function verifyOnePayoutBatch(
+  db: ReturnType<typeof drizzle>,
+  r2: R2Bucket,
+  batch: typeof partnerPayoutBatches.$inferSelect,
+) {
+  if (!batch.txHash) return; // belt and braces; the SQL already filtered
+
+  const tx = await getTxInfo(batch.txHash);
+  if (!tx) {
+    // Provider failure — leave the batch alone, try next tick.
+    console.warn("[cron:payouts] tx not found yet", batch.txHash.slice(0, 12));
+    return;
+  }
+
+  const paidAtMs = batch.paidAt ? batch.paidAt.getTime() : null;
+  if (paidAtMs != null && !isWithinPaidAtWindow(tx.block_time, paidAtMs)) {
+    await applyDiscrepancy(
+      db,
+      batch.id,
+      `tx block_time (${tx.block_time}) outside ±24h window of recorded paidAt (${paidAtMs}).`,
+    );
+    return;
+  }
+
+  // Fetch CSV from R2.
+  const obj = await r2.get(batch.csvR2Key);
+  if (!obj) {
+    await applyDiscrepancy(db, batch.id, `csv missing from R2: ${batch.csvR2Key}`);
+    return;
+  }
+  const csvText = await obj.text();
+  let rows;
+  try {
+    rows = parseCsv(csvText);
+  } catch (e) {
+    await applyDiscrepancy(db, batch.id, `csv parse error: ${(e as Error).message}`);
+    return;
+  }
+
+  const reconcile = compareCsvToTxOutputs(rows, tx);
+  if (!reconcile.ok) {
+    const note = JSON.stringify(reconcile.discrepancies, null, 2);
+    await applyDiscrepancy(db, batch.id, note);
+    return;
+  }
+
+  // Happy path: mark verified, clear any stale discrepancy, move submissions.
+  await db
+    .update(partnerPayoutBatches)
+    .set({ verifiedOnChain: true, discrepancyNote: null })
+    .where(eq(partnerPayoutBatches.id, batch.id));
+  await db
+    .update(submissions)
+    .set({ status: "reward_verified" })
+    .where(and(eq(submissions.payoutBatchId, batch.id), eq(submissions.status, "paid")));
+  await db.insert(auditLog).values({
+    userId: "system:cron",
+    entityType: "payout_batch",
+    entityId: batch.id,
+    field: "verified_on_chain",
+    oldValue: "false",
+    newValue: "true",
+  });
+  console.log("[cron:payouts] batch verified on-chain", batch.id);
+}
+
+async function applyDiscrepancy(
+  db: ReturnType<typeof drizzle>,
+  batchId: string,
+  note: string,
+) {
+  await db
+    .update(partnerPayoutBatches)
+    .set({ discrepancyNote: note })
+    .where(eq(partnerPayoutBatches.id, batchId));
+  await db.insert(auditLog).values({
+    userId: "system:cron",
+    entityType: "payout_batch",
+    entityId: batchId,
+    field: "discrepancy_note",
+    oldValue: null,
+    newValue: note.length > 500 ? note.slice(0, 500) + "…" : note,
+  });
+  console.warn("[cron:payouts] discrepancy recorded", batchId, note.slice(0, 200));
 }
