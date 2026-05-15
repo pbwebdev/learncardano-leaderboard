@@ -28,7 +28,17 @@ export interface SubmissionLike {
 
 export type SubmissionEligibility =
   | { ok: true }
-  | { ok: false; reason: "task_not_active" | "task_not_started" | "task_ended" | "already_submitted" | "already_completed" | "unsupported_task_type" };
+  | {
+      ok: false;
+      reason:
+        | "task_not_active"
+        | "task_not_started"
+        | "task_ended"
+        | "already_submitted"
+        | "already_completed"
+        | "unsupported_task_type"
+        | "webhook_only_task_type";
+    };
 
 /**
  * Eligibility check before a user submits. Pure: takes the task + their
@@ -63,7 +73,10 @@ export function canSubmitForTask(opts: {
   // Phase 4+ types (bounty_completion) aren't submitted by users directly —
   // they come in via webhook.
   if (isPhase3PlusTaskType(opts.task.taskType)) {
-    return { ok: false, reason: "unsupported_task_type" };
+    // bounty_completion (and any future webhook-only types) — surfaced with
+    // a distinct reason so the submit page can render "this task completes
+    // automatically via [partner] — nothing to submit here".
+    return { ok: false, reason: "webhook_only_task_type" };
   }
   if (!isTaskTypeEnabledInPhase3(opts.task.taskType)) {
     return { ok: false, reason: "unsupported_task_type" };

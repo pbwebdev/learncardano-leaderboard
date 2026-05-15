@@ -98,13 +98,13 @@ describe("submissions: canSubmitForTask eligibility", () => {
     }
   });
 
-  it("blocks Phase 4+ webhook-only task types as unsupported", () => {
+  it("blocks Phase 4+ webhook-only task types with a distinct reason", () => {
     const r = canSubmitForTask({
       task: makeTask({ taskType: "bounty_completion", taskConfig: {} }),
       priorSubmissions: [],
       now: NOW,
     });
-    expect(r).toEqual({ ok: false, reason: "unsupported_task_type" });
+    expect(r).toEqual({ ok: false, reason: "webhook_only_task_type" });
   });
 
   it("respects maxCompletionsPerUser > 1", () => {

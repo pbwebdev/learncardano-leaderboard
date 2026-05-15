@@ -5,6 +5,7 @@ import { verifyTxHash } from "./tx-hash";
 import { verifyGovernanceVote } from "./governance";
 import { verifyXRetweet, verifyXTweet } from "./social-x";
 import { verifyYouTubeComment } from "./social-youtube";
+import { verifyBountyCompletion } from "./bounty";
 
 /**
  * Verification dispatcher — reads `task.taskType`, routes to the right
@@ -168,7 +169,10 @@ export async function verify(opts: VerifyOpts): Promise<VerifierResult> {
         },
       });
     case "bounty_completion":
-      throw new Error(`unknown_task_type:${opts.taskType}:phase4`);
+      // Webhook-only path — verifyBountyCompletion returns 'rejected' so any
+      // stray submission that reaches the queue is rejected loudly. Real
+      // bounty completions skip the queue entirely (see /api/webhooks/bounty).
+      return verifyBountyCompletion({ taskConfig: opts.taskConfig });
     default:
       throw new Error(`unknown_task_type:${opts.taskType}`);
   }
