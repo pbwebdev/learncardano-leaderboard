@@ -39,11 +39,25 @@ function SignedInChip({ stakeAddress }: { stakeAddress: string }) {
     try {
       await fetch("/api/auth/signout", { method: "POST" });
     } finally {
-      // Reload so server components pick up the cleared cookie. We deliberately
-      // do NOT call wallet.disconnect() — that would require importing the
-      // wallet hook and reintroduce the auto-reconnect popup loop. The wallet
-      // extension's per-site authorization is harmless and the user can
-      // revoke it from the extension if they want.
+      // Clear cardano-connect-with-wallet's persisted state so the next page
+      // load does NOT silently auto-reconnect to the last-used wallet (which
+      // pops Lace's Authorize-DApp dialog and creates a sign-in-loop on
+      // sign-back-in). The library uses a small handful of localStorage keys
+      // — strip anything in the "cf-wallet*" / "cardano-*" family.
+      try {
+        if (typeof localStorage !== "undefined") {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k.startsWith("cf-wallet") || k.startsWith("cardano-")) {
+              localStorage.removeItem(k);
+            }
+          }
+        }
+      } catch {
+        // localStorage can throw in privacy modes — ignore, the worst case is
+        // an extra Authorize prompt on the next sign-in, not a security issue.
+      }
       window.location.assign("/");
     }
   }

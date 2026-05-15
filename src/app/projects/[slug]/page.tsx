@@ -21,10 +21,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-export default async function ProjectDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ProjectDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ submitted?: string }>;
+}) {
   const stake = await getCurrentStakeAddressOrNull();
   if (!stake) redirect("/");
   const { slug } = await params;
+  const { submitted } = await searchParams;
   const db = getDb();
   const project = (await db.select().from(projects).where(eq(projects.id, slug)).limit(1))[0];
   if (!project) notFound();
@@ -51,6 +58,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
+      {submitted && (
+        <div
+          role="status"
+          className="mb-6 rounded-[--radius-md] border border-green-700/40 bg-green-900/20 p-4 text-sm"
+        >
+          <p className="font-semibold text-green-300">Submission received — thanks!</p>
+          <p className="mt-1 text-[color:var(--fg-muted)]">
+            An admin will review your proof. You can track the status on{" "}
+            <Link href="/me" className="underline">My dashboard</Link>. Points are
+            awarded on approval.
+          </p>
+        </div>
+      )}
       <p className="text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">{project.category}</p>
       <h1 className="mt-1 text-3xl font-bold tracking-tight">{project.name}</h1>
       {project.websiteUrl && (
