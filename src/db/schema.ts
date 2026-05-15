@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 /**
  * Phase 0 schema landed users + audit_log. Phase 1 extends with:
@@ -189,6 +189,45 @@ export const pointsLedger = sqliteTable("points_ledger", {
 }, (t) => ({
   byUser: index("points_ledger_user_idx").on(t.userId),
   bySubmission: index("points_ledger_submission_idx").on(t.submissionId),
+}));
+
+/**
+ * Partner payout batches (Phase 4). Created when an admin "Exports winners"
+ * for a project: rows are written to a CSV in R2 (csvR2Key), and selected
+ * submissions are linked here via submissions.payoutBatchId.
+ *
+ * State machine:
+ *   - Created via /admin/payouts/new        → submissions move 'verified' → 'paid_pending'
+ *   - txHash recorded by admin              → submissions move 'paid_pending' → 'paid'
+ *   - On-chain verified by daily cron       → verifiedOnChain=1; submissions → 'reward_verified'
+ *
+ * txHash is unique-when-not-null: same payout tx cannot be recorded twice.
+ * SQLite UNIQUE treats NULLs as distinct so multiple pending batches are
+ * fine while txHash is null.
+ */
+export const partnerPayoutBatches = sqliteTable("partner_payout_batches", {
+  id: text("id").primaryKey(), // uuid
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id),
+  csvR2Key: text("csv_r2_key").notNull(),
+  rowCount: integer("row_count").notNull().default(0),
+  totalAmount: real("total_amount").notNull().default(0),
+  txHash: text("tx_hash"),
+  paidAt: integer("paid_at", { mode: "timestamp_ms" }),
+  verifiedOnChain: integer("verified_on_chain", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  // Discrepancy report when cron detects a mismatch between CSV and tx outputs.
+  // Null = no check yet, or check passed.
+  discrepancyNote: text("discrepancy_note"),
+  recordedByUserId: text("recorded_by_user_id").references(() => users.stakeAddress),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`),
+}, (t) => ({
+  uniqTx: uniqueIndex("partner_payout_batches_tx_hash_unique").on(t.txHash),
+  byProject: index("partner_payout_batches_project_idx").on(t.projectId),
 }));
 
 /**
