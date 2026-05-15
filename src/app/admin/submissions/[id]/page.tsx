@@ -67,6 +67,16 @@ export default async function AdminSubmissionDetailPage({ params }: { params: Pr
         <Detail label="Admin notes">{sub.notes ?? "—"}</Detail>
       </section>
 
+      {canReVerify(sub) && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
+          <h3 className="font-semibold">Re-verify (auto)</h3>
+          <p className="mt-1 text-[color:var(--fg-muted)]">Enqueue this submission for another auto-verification pass. Use after upstream Koios/Blockfrost recovers, or after a code deploy that fixed a verifier bug.</p>
+          <form action={`/api/verify/${sub.id}`} method="post" className="mt-3">
+            <button type="submit" className="rounded-[--radius-md] border border-[color:var(--border-strong)] bg-[color:var(--bg-elevated)] px-3 py-1.5 hover:bg-[color:var(--surface)]">Re-verify now</button>
+          </form>
+        </section>
+      )}
+
       {sub.status === "pending" || sub.status === "verifying" ? (
         <section className="mt-6 grid gap-4 md:grid-cols-2">
           <SaveForm action={approveSubmission} className="rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
@@ -135,6 +145,30 @@ export default async function AdminSubmissionDetailPage({ params }: { params: Pr
       </section>
     </main>
   );
+}
+
+/**
+ * Re-verify is available for any submission stuck in the auto-verify flow.
+ * Approve/Reject buttons already handle manual_review's pending state — we
+ * only surface Re-verify for the on-chain pathways where another pass might
+ * change the outcome. Includes rejected submissions whose reason was a
+ * recoverable upstream / unconfirmed condition.
+ */
+function canReVerify(sub: {
+  status: string;
+  rejectionReason?: string | null;
+  taskId?: string;
+}): boolean {
+  if (sub.status === "pending" || sub.status === "verifying") return true;
+  if (sub.status === "rejected") {
+    const r = sub.rejectionReason ?? "";
+    return (
+      r === "verifier_unavailable" ||
+      r === "unconfirmed" ||
+      r.startsWith("needs_review")
+    );
+  }
+  return false;
 }
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
