@@ -1,7 +1,10 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "learncardano-leaderboard",
-	"main": ".open-next/worker.js",
+	// Phase 2: custom worker entry that re-exports OpenNext's fetch (+DOs)
+	// AND adds queue() / scheduled() handlers. The entry imports from
+	// `.open-next/worker.js` post-build — see src/worker-entry.ts.
+	"main": "src/worker-entry.ts",
 	"compatibility_date": "2026-05-01",
 	"compatibility_flags": [
 		"nodejs_compat",
@@ -40,16 +43,21 @@
 		}
 	],
 	"queues": {
-		// Producer only for Phase 0/1 — API routes will enqueue verification jobs.
-		// Consumer entry returns in Phase 2 alongside src/queues/verify-consumer.ts
-		// and the Worker's queue() handler. Re-add then:
-		//   "consumers": [{ "queue": "learncardano-leaderboard-verify",
-		//                   "max_batch_size": 10, "max_batch_timeout": 5,
-		//                   "max_retries": 3 }]
 		"producers": [
 			{
 				"binding": "VERIFY_QUEUE",
 				"queue": "learncardano-leaderboard-verify"
+			}
+		],
+		// Phase 2: consumer wired to src/queues/verify-consumer.ts via the
+		// queue() handler in src/worker-entry.ts. Batch up to 10 messages
+		// per invocation, 5s max wait, 3 retries with consumer-side backoff.
+		"consumers": [
+			{
+				"queue": "learncardano-leaderboard-verify",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5,
+				"max_retries": 3
 			}
 		]
 	},
