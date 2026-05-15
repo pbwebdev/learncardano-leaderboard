@@ -6,6 +6,7 @@ import { getCurrentStakeAddressOrNull } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { clickEvents, projects, submissions, tasks, users } from "@/db/schema";
 import { renderMarkdown } from "@/lib/markdown";
+import { SubmissionStatusPoll } from "@/components/submission-status-poll";
 import { resolvePersonalReferralLink } from "@/lib/referral-links";
 import { getBatchSummaryForProject, shouldShowPayoutsVerifiedBadge } from "@/lib/payouts-badge";
 import { PayoutsVerifiedBadge } from "@/components/payouts-verified-badge";
@@ -97,19 +98,7 @@ export default async function ProjectDetailPage({
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      {submitted && (
-        <div
-          role="status"
-          className="mb-6 rounded-[--radius-md] border border-green-700/40 bg-green-900/20 p-4 text-sm"
-        >
-          <p className="font-semibold text-green-300">Submission received — thanks!</p>
-          <p className="mt-1 text-[color:var(--fg-muted)]">
-            An admin will review your proof. You can track the status on{" "}
-            <Link href="/me" className="underline">My dashboard</Link>. Points are
-            awarded on approval.
-          </p>
-        </div>
-      )}
+      {submitted && <SubmissionStatusPoll submissionId={submitted} />}
       <p className="text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">{project.category}</p>
       <div className="mt-1 flex flex-wrap items-baseline gap-3">
         <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
