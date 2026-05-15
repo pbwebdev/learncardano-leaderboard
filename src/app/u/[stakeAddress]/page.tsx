@@ -67,15 +67,15 @@ export default async function PublicProfilePage({
   const referralCount = Number(refCountRow[0]?.n ?? 0);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
-      <h1 className="text-3xl font-bold tracking-tight">
+    <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+      <h1 className="text-3xl font-bold tracking-tight break-words">
         {user.xHandle ? `@${user.xHandle}` : "Cardano leaderboard player"}
       </h1>
-      <p className="mt-2 font-mono text-xs text-[color:var(--fg-muted)]">
+      <p className="mt-2 font-mono text-xs text-[color:var(--fg-muted)] break-all">
         {stakeAddress.slice(0, 16)}…{stakeAddress.slice(-8)}
       </p>
 
-      <section className="mt-8 grid grid-cols-4 gap-3 text-center">
+      <section className="mt-8 grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
         <Stat label="Points" value={points || "—"} />
         <Stat label="Verified tasks" value={verified || "—"} />
         <Stat label="Projects engaged" value={projectsEngaged || "—"} />
@@ -83,7 +83,7 @@ export default async function PublicProfilePage({
       </section>
 
       {user.refCode && (
-        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
           <h2 className="text-lg font-semibold">Referral code</h2>
           <code className="mt-2 inline-block rounded bg-[color:var(--bg-code)] px-2 py-1 font-mono text-sm">
             {user.refCode}
@@ -97,7 +97,7 @@ export default async function PublicProfilePage({
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
-      <div className="font-mono text-2xl">{value}</div>
+      <div className="font-mono text-2xl tabular-nums">{value}</div>
       <div className="mt-1 text-xs text-[color:var(--fg-muted)]">{label}</div>
     </div>
   );

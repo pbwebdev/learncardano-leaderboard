@@ -8,6 +8,7 @@ import { getPointsFor } from "@/lib/points";
 import { setProfileVisibility } from "./actions";
 import { SaveForm } from "@/components/save-form";
 import { LocalTime } from "@/components/local-time";
+import { CopyRefCode } from "@/components/copy-ref-code";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,35 +55,40 @@ export default async function MyDashboardPage() {
   const ytLinked = !!user?.youtubeChannelId;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-3xl font-bold tracking-tight">My dashboard</h1>
-      <p className="mt-2 font-mono text-xs text-[color:var(--fg-muted)]">
+      <p className="mt-2 font-mono text-xs text-[color:var(--fg-muted)] break-all">
         {stakeAddress.slice(0, 16)}…{stakeAddress.slice(-8)}
       </p>
 
-      <section className="mt-8 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+      <section className="mt-8 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
         <h2 className="text-lg font-semibold">Points</h2>
         <p className="mt-4 font-mono text-3xl text-[color:var(--fg)]">{points} <span className="text-base text-[color:var(--fg-muted)]">pts</span></p>
         {visibility === "public" && (
-          <p className="mt-2 text-xs text-[color:var(--fg-muted)]">
+          <p className="mt-2 text-xs text-[color:var(--fg-muted)] break-all">
             Your public profile is at <Link className="underline" href={`/u/${stakeAddress}`}>/u/{stakeAddress.slice(0, 12)}…</Link>
           </p>
         )}
       </section>
 
-      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
         <h2 className="text-lg font-semibold">Recent submissions</h2>
         {recent.length === 0 ? (
           <p className="mt-2 text-sm text-[color:var(--fg-muted)]">No submissions yet. <Link href="/projects" className="underline">Browse projects</Link> to get started.</p>
         ) : (
-          <ul className="mt-3 space-y-2 text-sm">
+          <ul className="mt-3 space-y-3 sm:space-y-2 text-sm">
             {recent.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-baseline gap-2">
-                <StatusPill status={r.status} />
-                <Link href={`/projects/${r.projectId}`} className="font-medium underline">{r.projectName}</Link>
-                <span className="text-[color:var(--fg-muted)]">·</span>
-                <span>{r.taskTitle}</span>
-                <span className="ml-auto text-xs text-[color:var(--fg-muted)]">
+              <li
+                key={r.id}
+                className="flex flex-col gap-1 border-b border-[color:var(--rule)] pb-3 last:border-b-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-2 sm:border-b-0 sm:pb-0"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusPill status={r.status} />
+                  <Link href={`/projects/${r.projectId}`} className="font-medium underline">{r.projectName}</Link>
+                </div>
+                <span className="hidden sm:inline text-[color:var(--fg-muted)]">·</span>
+                <span className="text-[color:var(--fg-muted)] sm:text-[color:var(--fg)]">{r.taskTitle}</span>
+                <span className="text-xs text-[color:var(--fg-muted)] sm:ml-auto">
                   <LocalTime iso={r.submittedAt.toISOString()} />
                   {r.status === "verified" && r.taskPoints !== 0 && (
                     <span className="ml-2">+{r.taskPoints} pts</span>
@@ -95,42 +101,44 @@ export default async function MyDashboardPage() {
       </section>
 
       {user?.refCode && (
-        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
           <h2 className="text-lg font-semibold">Your referral code</h2>
-          <p className="mt-3">
-            <code className="inline-block rounded bg-[color:var(--bg-code)] px-2 py-1 font-mono text-base">{user.refCode}</code>
-            <span className="ml-3 text-sm text-[color:var(--fg-muted)]">{referralCount} {referralCount === 1 ? "person" : "people"} signed up with your code</span>
-          </p>
-          <p className="mt-2 text-xs text-[color:var(--fg-muted)]">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+            <CopyRefCode code={user.refCode} />
+            <span className="text-sm text-[color:var(--fg-muted)]">
+              {referralCount} {referralCount === 1 ? "person" : "people"} signed up with your code
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-[color:var(--fg-muted)]">
             Share this code with friends. When they enter it during onboarding, we record the link.
             (Referral bonuses are still being designed — Peter will announce the formula before launch.)
           </p>
         </section>
       )}
 
-      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
         <h2 className="text-lg font-semibold">Linked accounts</h2>
         <ul className="mt-3 space-y-2 text-sm">
-          <li className="flex items-center gap-3">
-            <span className="w-20 text-[color:var(--fg-muted)]">X</span>
+          <li className="flex items-center gap-3 flex-wrap">
+            <span className="w-20 shrink-0 text-[color:var(--fg-muted)]">X</span>
             {xLinked ? (
               <span>@{user!.xHandle}</span>
             ) : (
-              <a href="/api/oauth/x/start" className="underline">Connect X</a>
+              <a href="/api/oauth/x/start" className="underline tap-target inline-flex items-center">Connect X</a>
             )}
           </li>
-          <li className="flex items-center gap-3">
-            <span className="w-20 text-[color:var(--fg-muted)]">YouTube</span>
+          <li className="flex items-center gap-3 flex-wrap">
+            <span className="w-20 shrink-0 text-[color:var(--fg-muted)]">YouTube</span>
             {ytLinked ? (
-              <span>{user!.youtubeChannelTitle ?? user!.youtubeChannelId}</span>
+              <span className="break-all">{user!.youtubeChannelTitle ?? user!.youtubeChannelId}</span>
             ) : (
-              <a href="/api/oauth/youtube/start" className="underline">Connect YouTube</a>
+              <a href="/api/oauth/youtube/start" className="underline tap-target inline-flex items-center">Connect YouTube</a>
             )}
           </li>
         </ul>
       </section>
 
-      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-5 sm:p-6 font-sans">
         <h2 className="text-lg font-semibold">Profile visibility</h2>
         <p className="mt-2 text-sm text-[color:var(--fg-muted)]">
           When public, your stake address and points appear on the leaderboard
@@ -139,17 +147,17 @@ export default async function MyDashboardPage() {
           leaderboard. Onboarding survey answers are never shown publicly.
         </p>
         <SaveForm action={setProfileVisibility} className="mt-4 flex flex-col gap-2 text-sm">
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-3 tap-target cursor-pointer">
             <input type="radio" name="visibility" value="public" defaultChecked={visibility === "public"} />
             <span>Public — show me on the leaderboard</span>
           </label>
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-3 tap-target cursor-pointer">
             <input type="radio" name="visibility" value="private" defaultChecked={visibility === "private"} />
             <span>Private — hide my profile and leaderboard entry</span>
           </label>
           <button
             type="submit"
-            className="mt-2 self-start rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-primary-strong)]"
+            className="mt-2 w-full sm:self-start sm:w-auto rounded-[--radius-md] bg-[color:var(--accent-primary)] px-4 py-2.5 text-sm font-medium text-white hover:bg-[color:var(--accent-primary-strong)]"
           >
             Save visibility
           </button>
