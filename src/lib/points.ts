@@ -138,7 +138,11 @@ export async function getPointsLeaderboard(limit = 100): Promise<LeaderboardRow[
     })
     .from(users)
     .where(eq(users.profileVisibility, "public"))
-    .orderBy(desc(sql`total_points`))
+    // SQLite cannot resolve `total_points` here — Drizzle does not emit an
+    // `AS` alias on these subquery columns, so we order by the same SUM
+    // expression directly. Verified against `wrangler tail` (the previous
+    // `desc(sql\`total_points\`)` returned 500 with "no such column").
+    .orderBy(desc(sql`COALESCE((SELECT SUM(delta) FROM points_ledger WHERE points_ledger.user_id = users.stake_address), 0)`))
     .limit(limit);
 
   return rows
