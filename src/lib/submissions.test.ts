@@ -41,19 +41,37 @@ describe("submissions: canSubmitForTask eligibility", () => {
     expect(r).toEqual({ ok: false, reason: "task_ended" });
   });
 
-  it("blocks when user already has a verified submission and max=1", () => {
+  it("blocks a second submission when max=1, regardless of prior status (verified)", () => {
     const r = canSubmitForTask({
       task: makeTask(),
       priorSubmissions: [{ userId: "u", taskId: "t1", status: "verified" }],
       now: NOW,
     });
-    expect(r).toEqual({ ok: false, reason: "already_completed" });
+    expect(r).toEqual({ ok: false, reason: "already_submitted" });
   });
 
-  it("ignores pending submissions for the completion check", () => {
+  it("blocks a second submission when max=1 even if the prior is still pending", () => {
     const r = canSubmitForTask({
       task: makeTask(),
       priorSubmissions: [{ userId: "u", taskId: "t1", status: "pending" }],
+      now: NOW,
+    });
+    expect(r).toEqual({ ok: false, reason: "already_submitted" });
+  });
+
+  it("blocks a second submission when max=1 even if the prior was rejected (anti-spam)", () => {
+    const r = canSubmitForTask({
+      task: makeTask(),
+      priorSubmissions: [{ userId: "u", taskId: "t1", status: "rejected" }],
+      now: NOW,
+    });
+    expect(r).toEqual({ ok: false, reason: "already_submitted" });
+  });
+
+  it("submissions on a DIFFERENT task do not block this one", () => {
+    const r = canSubmitForTask({
+      task: makeTask(),
+      priorSubmissions: [{ userId: "u", taskId: "other-task", status: "rejected" }],
       now: NOW,
     });
     expect(r).toEqual({ ok: true });

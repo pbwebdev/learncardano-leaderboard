@@ -26,7 +26,7 @@ export interface SubmissionLike {
 
 export type SubmissionEligibility =
   | { ok: true }
-  | { ok: false; reason: "task_not_active" | "task_not_started" | "task_ended" | "already_completed" | "unsupported_task_type" };
+  | { ok: false; reason: "task_not_active" | "task_not_started" | "task_ended" | "already_submitted" | "already_completed" | "unsupported_task_type" };
 
 /**
  * Eligibility check before a user submits. Pure: takes the task + their
@@ -35,9 +35,17 @@ export type SubmissionEligibility =
  * Rules:
  *   - task.status must be 'active'
  *   - now must be within [startsAt, endsAt] when set
- *   - if maxCompletionsPerUser === 1 (default), reject if a verified
- *     submission already exists; pending submissions are allowed to
- *     remain in queue (admin can reject and re-submit)
+ *   - One submission per user per task, full stop — ANY prior submission
+ *     (pending, verified, rejected, paid, reward_verified) for this task
+ *     blocks a new one. This is the manual-review anti-spam: without it,
+ *     a user can keep resubmitting after every rejection hoping for a
+ *     different admin call.
+ *   - If a user legitimately needs a retry, an admin can delete the
+ *     rejected submission row from D1 to free the slot (admin self-serve
+ *     reset flow is a Phase 4+ enhancement, not v1).
+ *   - maxCompletionsPerUser > 1 still works on the verified-count axis
+ *     for tasks where repeats are intentional (e.g. a daily check-in
+ *     task in a later phase).
  *   - Phase 1: only manual_review is allowed; other types return
  *     unsupported_task_type
  */
@@ -52,10 +60,11 @@ export function canSubmitForTask(opts: {
   const endsAt = toMillis(opts.task.endsAt);
   if (startsAt != null && opts.now < startsAt) return { ok: false, reason: "task_not_started" };
   if (endsAt != null && opts.now > endsAt) return { ok: false, reason: "task_ended" };
-  const verified = opts.priorSubmissions.filter((s) => s.taskId === opts.task.id && s.status === "verified");
-  if (opts.task.maxCompletionsPerUser === 1 && verified.length >= 1) {
-    return { ok: false, reason: "already_completed" };
+  const mineForTask = opts.priorSubmissions.filter((s) => s.taskId === opts.task.id);
+  if (opts.task.maxCompletionsPerUser === 1 && mineForTask.length >= 1) {
+    return { ok: false, reason: "already_submitted" };
   }
+  const verified = mineForTask.filter((s) => s.status === "verified");
   if (opts.task.maxCompletionsPerUser > 1 && verified.length >= opts.task.maxCompletionsPerUser) {
     return { ok: false, reason: "already_completed" };
   }

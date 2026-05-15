@@ -99,7 +99,11 @@ export default async function ProjectDetailPage({
               const myStatuses = myByTask.get(t.id) ?? [];
               const hasVerified = myStatuses.includes("verified");
               const hasPending = myStatuses.includes("pending");
-              const hideCta = hasVerified && t.maxCompletionsPerUser === 1;
+              const hasRejected = myStatuses.includes("rejected");
+              // One submission per user per task — any prior submission of any
+              // status locks the CTA. Keeps manual_review honest (otherwise a
+              // user could spam resubmissions to game the reviewer).
+              const lockedSingle = t.maxCompletionsPerUser === 1 && myStatuses.length > 0;
               return (
                 <li key={t.id} className="rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -110,14 +114,21 @@ export default async function ProjectDetailPage({
                     <p className="mt-2 text-sm text-[color:var(--fg-muted)]">{t.descriptionMd}</p>
                   )}
                   <div className="mt-3 flex items-center gap-3 text-sm">
-                    {hideCta ? (
-                      <span className="rounded bg-green-200 px-2 py-0.5 text-xs font-medium text-green-900">Completed</span>
+                    {lockedSingle ? (
+                      hasVerified ? (
+                        <span className="rounded bg-green-200 px-2 py-0.5 text-xs font-medium text-green-900">Verified · {t.points} pts</span>
+                      ) : hasPending ? (
+                        <span className="rounded bg-yellow-200 px-2 py-0.5 text-xs font-medium text-yellow-900">Pending review</span>
+                      ) : hasRejected ? (
+                        <span className="rounded bg-red-200 px-2 py-0.5 text-xs font-medium text-red-900">Rejected · contact admin to retry</span>
+                      ) : (
+                        <span className="rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-900">Already submitted</span>
+                      )
                     ) : t.taskType === "manual_review" ? (
                       <Link href={`/projects/${slug}/tasks/${t.id}/submit`} className="rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Submit proof</Link>
                     ) : (
                       <span className="text-xs text-[color:var(--fg-muted)]">Phase 2 — auto verification</span>
                     )}
-                    {hasPending && <span className="text-xs text-[color:var(--fg-muted)]">Submission pending review</span>}
                   </div>
                 </li>
               );
