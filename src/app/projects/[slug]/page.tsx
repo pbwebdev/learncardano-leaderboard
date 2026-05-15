@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getCurrentStakeAddressOrNull } from "@/lib/auth";
 import { getDb } from "@/db/client";
-import { projects, submissions, tasks } from "@/db/schema";
+import { clickEvents, projects, submissions, tasks, users } from "@/db/schema";
 import { renderMarkdown } from "@/lib/markdown";
+import { resolvePersonalReferralLink } from "@/lib/referral-links";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,28 @@ export default async function ProjectDetailPage({
 
   const descriptionHtml = renderMarkdown(project.description);
 
+  // Phase 3: per-user referral link. Only when the project has a
+  // referralUrl configured. Resolution is lazy + non-fatal; if Dub
+  // isn't configured, `shortUrl` is null and we fall back to the
+  // destination URL in the UI.
+  let personalRef: { shortUrl: string | null; destinationUrl: string; clicks: number } | null = null;
+  if (project.referralUrl) {
+    const userRow = (await db.select({ refCode: users.refCode }).from(users).where(eq(users.stakeAddress, stake)).limit(1))[0];
+    if (userRow?.refCode) {
+      const link = await resolvePersonalReferralLink({
+        projectId: slug,
+        projectReferralUrl: project.referralUrl,
+        userRefCode: userRow.refCode,
+      });
+      let clicks = 0;
+      if (link.trackedLinkId) {
+        const c = (await db.select({ n: sql<number>`COUNT(*)` }).from(clickEvents).where(eq(clickEvents.trackedLinkId, link.trackedLinkId)))[0];
+        clicks = Number(c?.n ?? 0);
+      }
+      personalRef = { shortUrl: link.shortUrl, destinationUrl: link.destinationUrl, clicks };
+    }
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       {submitted && (
@@ -88,6 +111,23 @@ export default async function ProjectDetailPage({
       <article className="prose mt-6 max-w-none text-sm leading-relaxed [&_a]:underline [&_h1]:mt-4 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h4]:mt-3 [&_h4]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_code]:rounded [&_code]:bg-[color:var(--bg-code)] [&_code]:px-1"
         dangerouslySetInnerHTML={{ __html: descriptionHtml }}
       />
+
+      {personalRef && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
+          <h2 className="font-semibold">Your personal referral link</h2>
+          <p className="mt-2">
+            {personalRef.shortUrl ? (
+              <a href={personalRef.shortUrl} target="_blank" rel="noopener noreferrer" className="underline font-mono text-[color:var(--accent-info)]">{personalRef.shortUrl}</a>
+            ) : (
+              <a href={personalRef.destinationUrl} target="_blank" rel="noopener noreferrer" className="underline font-mono">{personalRef.destinationUrl}</a>
+            )}
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--fg-muted)]">Clicks: {personalRef.clicks}</p>
+          {!personalRef.shortUrl && (
+            <p className="mt-1 text-xs text-[color:var(--fg-muted)]">Short-link tracking is offline — the raw URL above isn&apos;t click-tracked yet.</p>
+          )}
+        </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">Tasks</h2>

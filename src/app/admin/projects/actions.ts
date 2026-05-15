@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { projects, submissions, tasks } from "@/db/schema";
 import { logChange } from "@/lib/audit";
 import { canEditProjectSlug } from "@/lib/submissions";
+import { DubNotConfiguredError, createLink, isDubConfigured, updateLink } from "@/lib/dub";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,40}[a-z0-9]$/;
 const VALID_STATUSES = new Set(["draft", "active", "upcoming", "ended"]);
@@ -34,12 +35,13 @@ export async function createProject(formData: FormData): Promise<void> {
   if (!VALID_CATEGORIES.has(category)) throw new Error("invalid_category");
 
   const db = getDb();
+  const referralUrl = readString(formData, "referralUrl") || null;
   await db.insert(projects).values({
     id,
     name,
     description: readString(formData, "description"),
     websiteUrl: readString(formData, "websiteUrl") || null,
-    referralUrl: readString(formData, "referralUrl") || null,
+    referralUrl,
     category,
     status,
     displayOrder: Number(readString(formData, "displayOrder") || "0") || 0,
@@ -53,6 +55,10 @@ export async function createProject(formData: FormData): Promise<void> {
     oldValue: null,
     newValue: { id, name, status, category },
   });
+
+  if (referralUrl) {
+    await syncProjectDubLink(id, referralUrl, adminId);
+  }
 }
 
 export async function updateProject(formData: FormData): Promise<void> {
@@ -112,6 +118,61 @@ export async function updateProject(formData: FormData): Promise<void> {
         newValue: v,
       });
     }
+  }
+
+  // If the admin set/changed referralUrl, sync the Dub link (non-fatal).
+  const finalReferral = typeof changes["referralUrl"] === "string"
+    ? (changes["referralUrl"] as string)
+    : (existing.referralUrl ?? null);
+  if (finalReferral) {
+    await syncProjectDubLink(targetId, finalReferral, adminId);
+  }
+}
+
+/**
+ * Create-or-update the project's Dub link. Idempotent via Dub's
+ * externalId. Non-fatal: any Dub failure is logged and surfaced as an
+ * audit entry but does NOT abort the project save (per the brief).
+ */
+async function syncProjectDubLink(projectId: string, referralUrl: string, adminId: string): Promise<void> {
+  if (!isDubConfigured()) {
+    // Silent skip — admin can rerun the save after secrets are set.
+    return;
+  }
+  const db = getDb();
+  const existing = (await db.select({ dubLinkId: projects.dubLinkId, shortUrl: projects.shortUrl, referralUrl: projects.referralUrl }).from(projects).where(eq(projects.id, projectId)).limit(1))[0];
+  try {
+    let link;
+    if (existing?.dubLinkId) {
+      // Update destination if the referral URL changed.
+      link = await updateLink(existing.dubLinkId, { url: referralUrl });
+    } else {
+      link = await createLink({
+        url: referralUrl,
+        externalId: `project:${projectId}`,
+        tags: ["leaderboard", `project:${projectId}`],
+      });
+    }
+    await db.update(projects).set({ dubLinkId: link.id, shortUrl: link.shortLink }).where(eq(projects.id, projectId));
+    await logChange({
+      userId: adminId,
+      entityType: "project",
+      entityId: projectId,
+      field: "dub_link",
+      oldValue: existing?.shortUrl ?? null,
+      newValue: link.shortLink,
+    });
+  } catch (e) {
+    if (e instanceof DubNotConfiguredError) return;
+    console.warn("[admin:projects] dub sync failed", e instanceof Error ? e.message : e);
+    await logChange({
+      userId: adminId,
+      entityType: "project",
+      entityId: projectId,
+      field: "dub_sync_error",
+      oldValue: null,
+      newValue: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
