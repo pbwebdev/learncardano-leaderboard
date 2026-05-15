@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 // Keep in sync with src/app/layout.tsx SITE_URL.
-const SITE_URL = "https://learncardano-leaderboard.learncardano.io";
+const SITE_URL = "https://leaderboard.learncardano.io";
 
 export default function robots(): MetadataRoute.Robots {
   return {

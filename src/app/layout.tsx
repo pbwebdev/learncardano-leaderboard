@@ -38,8 +38,8 @@ const sans = Roboto({
 });
 
 // Placeholder — Peter will confirm the production subdomain (likely
-// `learncardano-leaderboard.learncardano.io` matching the sibling pattern).
-const SITE_URL = "https://learncardano-leaderboard.learncardano.io";
+// `leaderboard.learncardano.io` matching the sibling pattern).
+const SITE_URL = "https://leaderboard.learncardano.io";
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 export const metadata: Metadata = {

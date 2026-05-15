@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = "https://learncardano-leaderboard.learncardano.io";
+const SITE_URL = "https://leaderboard.learncardano.io";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

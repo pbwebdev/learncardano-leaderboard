@@ -7,6 +7,8 @@
 		"nodejs_compat",
 		"global_fetch_strictly_public"
 	],
+	"workers_dev": false,
+	"preview_urls": false,
 	"assets": {
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
@@ -38,34 +40,30 @@
 		}
 	],
 	"queues": {
+		// Producer only for Phase 0/1 — API routes will enqueue verification jobs.
+		// Consumer entry returns in Phase 2 alongside src/queues/verify-consumer.ts
+		// and the Worker's queue() handler. Re-add then:
+		//   "consumers": [{ "queue": "learncardano-leaderboard-verify",
+		//                   "max_batch_size": 10, "max_batch_timeout": 5,
+		//                   "max_retries": 3 }]
 		"producers": [
 			{
 				"binding": "VERIFY_QUEUE",
 				"queue": "learncardano-leaderboard-verify"
 			}
-		],
-		"consumers": [
-			{
-				"queue": "learncardano-leaderboard-verify",
-				"max_batch_size": 10,
-				"max_batch_timeout": 5,
-				"max_retries": 3
-			}
 		]
 	},
 	"triggers": {
-		// Cron schedules — wired into a future scheduled() handler. Phase 0 has no
-		// cron consumer yet; these are declared so Phase 2's cron handler can hook
-		// in without redeploy churn.
+		// Cron schedules — declared so Phase 2's scheduled() handler can hook in
+		// without redeploy churn. Inert without a handler, so this doesn't block
+		// the Phase 0 deploy.
 		"crons": [
-			"0 */6 * * *",   // 6-hourly: delegation re-check
-			"5 * * * *",     // hourly: leaderboard cache refresh
-			"15 3 * * *"     // daily 03:15 UTC: DRep activity re-check + batch verify
+			"0 */6 * * *",
+			"5 * * * *",
+			"15 3 * * *"
 		]
 	},
 	"vars": {
-		"OWNER_STAKE_ADDRESS": "",
-		"ADMIN_STAKE_ADDRESSES": "",
 		"ALLOW_ENV_AUTH": "false"
 	}
 }
