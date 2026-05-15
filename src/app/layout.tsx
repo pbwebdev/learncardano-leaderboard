@@ -146,7 +146,7 @@ export default async function RootLayout({
                 My dashboard
               </NavLink>
             </nav>
-            <WalletButton signedIn={signedIn} />
+            <WalletButton signedIn={signedIn} stakeAddress={stakeAddress} />
           </div>
         </header>
         <div id="main" className="flex-1">{children}</div>
