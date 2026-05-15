@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import verifyDataSignature from "@cardano-foundation/cardano-verify-datasignature";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
 import { sessionCookieHeader, signSession } from "@/lib/session";
 import { looksLikeStakeAddress } from "@/lib/stake-address";
+import { generateRefCode } from "@/lib/ref-code";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,28 +70,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "signature_invalid" }, { status: 401 });
   }
 
-  // 3. Upsert user row (idempotent — first sign-in creates, subsequent updates
-  //    payment-address denormalisation).
+  // 3. Upsert user row (idempotent). First sign-in creates with a fresh
+  //    refCode + denormalised payment address; subsequent sign-ins only
+  //    refresh paymentAddress (refCode stays stable so existing shared
+  //    links keep working).
   try {
-    await getDb()
-      .insert(users)
-      .values({
+    const db = getDb();
+    const existing = (await db.select({ refCode: users.refCode }).from(users).where(eq(users.stakeAddress, stake_address_bech32)).limit(1))[0];
+    if (existing) {
+      await db.update(users).set({ paymentAddress: stake_address_hex }).where(eq(users.stakeAddress, stake_address_bech32));
+      // Backfill refCode if a Phase-0 user pre-dates the column.
+      if (!existing.refCode) {
+        const code = await pickUniqueRefCode(db);
+        await db.update(users).set({ refCode: code }).where(eq(users.stakeAddress, stake_address_bech32));
+      }
+    } else {
+      const refCode = await pickUniqueRefCode(db);
+      await db.insert(users).values({
         stakeAddress: stake_address_bech32,
         paymentAddress: stake_address_hex,
-      })
-      .onConflictDoUpdate({
-        target: users.stakeAddress,
-        set: { paymentAddress: stake_address_hex },
+        refCode,
       });
+    }
   } catch (e) {
     console.error("[auth:verify] user upsert failed", e);
     // Non-fatal — we'll still issue the session; the upsert will succeed on a
     // later request. This avoids locking out a user on a transient D1 error.
   }
 
+  // ---- helper: hoisted via lambda below ----
+
   // 4. Issue HMAC-signed session cookie.
   const cookieValue = await signSession(stake_address_bech32);
   const res = NextResponse.json({ ok: true, stake_address: stake_address_bech32 });
   res.headers.set("Set-Cookie", sessionCookieHeader(cookieValue));
   return res;
+}
+
+/**
+ * Generate a refCode and retry on the rare UNIQUE-index collision.
+ * 8 chars base32 = 40 bits; at a million users the birthday probability
+ * is still ~1-in-2200, so two retries are plenty.
+ */
+async function pickUniqueRefCode(db: ReturnType<typeof getDb>): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateRefCode();
+    const hit = (await db.select({ refCode: users.refCode }).from(users).where(eq(users.refCode, code)).limit(1))[0];
+    if (!hit) return code;
+  }
+  // Astronomically unlikely; fall back to a longer code as a safety valve.
+  return generateRefCode(12);
 }

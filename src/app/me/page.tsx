@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getCurrentStakeAddressOrNull } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { projects, submissions, tasks, users } from "@/db/schema";
@@ -26,7 +26,7 @@ export default async function MyDashboardPage() {
   }
   const visibility = user?.profileVisibility ?? "public";
 
-  const [points, recent] = await Promise.all([
+  const [points, recent, referralCountRow] = await Promise.all([
     getPointsFor(stakeAddress),
     db
       .select({
@@ -45,7 +45,13 @@ export default async function MyDashboardPage() {
       .where(eq(submissions.userId, stakeAddress))
       .orderBy(desc(submissions.submittedAt))
       .limit(10),
+    user?.refCode
+      ? db.select({ n: sql<number>`COUNT(*)` }).from(users).where(eq(users.invitedByRefCode, user.refCode))
+      : Promise.resolve([{ n: 0 }] as Array<{ n: number }>),
   ]);
+  const referralCount = Number(referralCountRow[0]?.n ?? 0);
+  const xLinked = !!user?.xHandle;
+  const ytLinked = !!user?.youtubeChannelId;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -86,6 +92,42 @@ export default async function MyDashboardPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      {user?.refCode && (
+        <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+          <h2 className="text-lg font-semibold">Your referral code</h2>
+          <p className="mt-3">
+            <code className="inline-block rounded bg-[color:var(--bg-code)] px-2 py-1 font-mono text-base">{user.refCode}</code>
+            <span className="ml-3 text-sm text-[color:var(--fg-muted)]">{referralCount} {referralCount === 1 ? "person" : "people"} signed up with your code</span>
+          </p>
+          <p className="mt-2 text-xs text-[color:var(--fg-muted)]">
+            Share this code with friends. When they enter it during onboarding, we record the link.
+            (Referral bonuses are still being designed — Peter will announce the formula before launch.)
+          </p>
+        </section>
+      )}
+
+      <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">
+        <h2 className="text-lg font-semibold">Linked accounts</h2>
+        <ul className="mt-3 space-y-2 text-sm">
+          <li className="flex items-center gap-3">
+            <span className="w-20 text-[color:var(--fg-muted)]">X</span>
+            {xLinked ? (
+              <span>@{user!.xHandle}</span>
+            ) : (
+              <a href="/api/oauth/x/start" className="underline">Connect X</a>
+            )}
+          </li>
+          <li className="flex items-center gap-3">
+            <span className="w-20 text-[color:var(--fg-muted)]">YouTube</span>
+            {ytLinked ? (
+              <span>{user!.youtubeChannelTitle ?? user!.youtubeChannelId}</span>
+            ) : (
+              <a href="/api/oauth/youtube/start" className="underline">Connect YouTube</a>
+            )}
+          </li>
+        </ul>
       </section>
 
       <section className="mt-6 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-6 font-sans">

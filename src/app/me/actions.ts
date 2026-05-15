@@ -5,6 +5,7 @@ import { getCurrentStakeAddress } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
 import { logChange } from "@/lib/audit";
+import { generateRefCode, looksLikeRefCode, normaliseRefCode } from "@/lib/ref-code";
 
 /**
  * Server actions for /me. All start with `getCurrentStakeAddress()` so an
@@ -43,13 +44,29 @@ export async function submitOnboarding(formData: FormData): Promise<void> {
   const country = String(formData.get("country") ?? "") || null;
   const experienceLevel = String(formData.get("experienceLevel") ?? "") || null;
   const referralSource = String(formData.get("referralSource") ?? "") || null;
-  const invitedByRefCode = String(formData.get("invitedByRefCode") ?? "") || null;
+  const rawInvited = String(formData.get("invitedByRefCode") ?? "");
 
-  // Generate a 6-char refCode from the stake credential — deterministic so
-  // re-onboarding doesn't re-roll it.
-  const refCode = userId.slice(-6).toLowerCase();
+  const db = getDb();
 
-  await getDb().update(users)
+  // refCode: keep whatever the auth-verify route set on first sign-in.
+  // Backfill only if missing (Phase 0 users predate the column).
+  const existing = (await db.select({ refCode: users.refCode }).from(users).where(eq(users.stakeAddress, userId)).limit(1))[0];
+  const refCode = existing?.refCode ?? generateRefCode();
+
+  // Validate invitedByRefCode: must be syntactically a refCode AND resolve
+  // to a real user that is NOT the submitter (you can't refer yourself).
+  let invitedByRefCode: string | null = null;
+  if (rawInvited) {
+    const normalised = normaliseRefCode(rawInvited);
+    if (looksLikeRefCode(normalised)) {
+      const inviter = (await db.select({ stakeAddress: users.stakeAddress }).from(users).where(eq(users.refCode, normalised)).limit(1))[0];
+      if (inviter && inviter.stakeAddress !== userId) {
+        invitedByRefCode = normalised;
+      }
+    }
+  }
+
+  await db.update(users)
     .set({
       ageBracket,
       country,
@@ -69,4 +86,14 @@ export async function submitOnboarding(formData: FormData): Promise<void> {
     oldValue: false,
     newValue: true,
   });
+  if (invitedByRefCode) {
+    await logChange({
+      userId,
+      entityType: "user",
+      entityId: userId,
+      field: "invited_by_ref_code",
+      oldValue: null,
+      newValue: invitedByRefCode,
+    });
+  }
 }

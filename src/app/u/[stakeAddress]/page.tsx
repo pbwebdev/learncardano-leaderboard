@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
 import { looksLikeStakeAddress } from "@/lib/stake-address";
@@ -50,11 +50,15 @@ export default async function PublicProfilePage({
     notFound();
   }
 
-  const [points, verified, projectsEngaged] = await Promise.all([
+  const [points, verified, projectsEngaged, refCountRow] = await Promise.all([
     getPointsFor(stakeAddress),
     getVerifiedCountFor(stakeAddress),
     getProjectsEngagedFor(stakeAddress),
+    user.refCode
+      ? getDb().select({ n: sql<number>`COUNT(*)` }).from(users).where(eq(users.invitedByRefCode, user.refCode))
+      : Promise.resolve([{ n: 0 }] as Array<{ n: number }>),
   ]);
+  const referralCount = Number(refCountRow[0]?.n ?? 0);
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
@@ -65,10 +69,11 @@ export default async function PublicProfilePage({
         {stakeAddress.slice(0, 16)}…{stakeAddress.slice(-8)}
       </p>
 
-      <section className="mt-8 grid grid-cols-3 gap-3 text-center">
+      <section className="mt-8 grid grid-cols-4 gap-3 text-center">
         <Stat label="Points" value={points || "—"} />
         <Stat label="Verified tasks" value={verified || "—"} />
         <Stat label="Projects engaged" value={projectsEngaged || "—"} />
+        <Stat label="Referrals" value={referralCount || "—"} />
       </section>
 
       {user.refCode && (
