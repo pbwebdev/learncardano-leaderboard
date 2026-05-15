@@ -42,7 +42,17 @@ Cron re-check every 24h. DRep expiry status uses **Blockfrost** as the authorita
 ### `tx_swap`
 **Config**
 ```ts
-{ scriptAddresses: string[], minAdaIn?: number }
+{
+  scriptAddresses: string[],
+  minAdaIn?: number,
+  // Strict-verification (all optional, AND-combined when set)
+  requiredScriptHashes?: string[],
+  requiredRedeemerTag?: "spend" | "mint" | "cert" | "reward" | "vote" | "propose",
+  requiredRedeemerConstructor?: number,
+  requiredMintedAsset?: { policyId: string, assetName?: string, minQuantity?: number },
+  requiredReferenceScriptHash?: string,
+  requiredOutputDatumHash?: string,
+}
 ```
 **Verifier** — `src/lib/verification/tx-hash.ts`
 1. User submits a tx hash. Schema-validate the hash (`/^[0-9a-f]{64}$/`).
@@ -54,6 +64,28 @@ Cron re-check every 24h. DRep expiry status uses **Blockfrost** as the authorita
    - If `minAdaIn`, sum of user-side inputs in lovelace ≥ `minAdaIn × 1e6`, AND
    - `tx.num_confirmations > 0` at verify time (else `needs_review` with `reason='unconfirmed'`).
 4. Unique-index check: `(userId, taskId, txHash)` — re-claim attempts return `rejected` with `reason='already_claimed'`.
+
+#### Strict verification (optional, recommended for high-reward tasks)
+
+These optional fields let an admin pin a `tx_swap` task to a specific Plutus
+contract interaction. Each field is an AND with the baseline checks above —
+when unset, behaviour is unchanged. Hex values are case-insensitive (the
+parser lower-cases everything).
+
+| Field | Check | Rejection reason | Ask the partner |
+|---|---|---|---|
+| `requiredScriptHashes[]` | tx must touch ≥1 matching Plutus script hash | `script_hash_not_present` | "What's the script hash (56 hex chars) of the contract a user interacts with?" |
+| `requiredRedeemerTag` | a redeemer with this purpose must be present | `redeemer_tag_mismatch` | "What's the redeemer purpose — `spend`, `mint`, `cert`, `reward`?" |
+| `requiredRedeemerConstructor` | a top-level redeemer constructor index must match | `redeemer_constructor_mismatch` | "What's the constructor index for the action that earns points? e.g. `0` = order, `1` = cancel." |
+| `requiredMintedAsset` | a matching asset must be minted (≥ minQuantity) | `minted_asset_not_present` | "Does the action mint a receipt / LP token? If so, policy ID + asset name (hex)." |
+| `requiredReferenceScriptHash` | a reference input must carry this script | `reference_script_not_attached` | "Does the contract live at a reference UTxO? If so, its ref-script hash." |
+| `requiredOutputDatumHash` | an output must carry this exact datum hash | `output_datum_hash_mismatch` | "If the task is pinned to a single datum shape, share its blake2b-256 (64 hex chars)." |
+
+**Provider-missing-data behaviour.** If the active provider can't supply a
+field that's needed for a configured check (notably Blockfrost doesn't
+expose redeemer constructor index or CBOR), the verifier returns
+`needs_review` with `reason='provider_data_missing:<field>'` — the admin
+can manually re-trigger via `/admin/submissions/[id]`.
 
 ### `asset_purchase`
 **Config**

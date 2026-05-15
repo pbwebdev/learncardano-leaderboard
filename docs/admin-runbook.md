@@ -50,6 +50,23 @@ How Peter operates the leaderboard day-to-day. Also the source-of-truth for whic
 3. Status → `active`, share project URL with partner.
 4. If reward is a partner token, seed the `tokenReward` JSON on each task with `{ policyId, assetName, quantity }`.
 
+#### Partner discovery checklist (for `tx_swap` strict verification)
+
+For high-reward on-chain tasks, ask the partner upfront so the verifier can
+pin to the exact contract interaction (see
+[`task-types.md` § Strict verification](../docs/task-types.md#strict-verification-optional-recommended-for-high-reward-tasks)):
+
+- Plutus script hash(es) of the contract (56 hex chars).
+- Redeemer tag/purpose for the action (`spend` / `mint` / `cert` / `reward`).
+- Redeemer constructor index for the rewarded action (e.g. `0` = place order, `1` = cancel).
+- Mint policy ID + asset name (if the action mints a receipt / LP token).
+- Reference script hash (if the contract uses a reference UTxO).
+- Output datum hash (only if the task pins to one datum shape).
+
+Leave any unanswered field blank — the verifier falls back to the baseline
+checks (tx exists + confirmed + involves user's wallet + has output to one
+of the configured script addresses).
+
 ### Recording a Bounty platform completion
 - Webhook fires automatically. No admin action needed.
 - If a partner reports a missed bounty, manual fallback: admin creates a submission with `status='verified'` and `notes='manual_bounty_record:<reason>'`. Logged.
