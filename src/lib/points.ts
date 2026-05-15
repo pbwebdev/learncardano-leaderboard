@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getDb } from "@/db/client";
-import { pointsLedger, submissions, tasks, users } from "@/db/schema";
+import { auditLog, pointsLedger, projects, submissions, tasks, users } from "@/db/schema";
 
 /**
  * Append-only points ledger helpers.
@@ -275,6 +275,140 @@ export async function getVerifiedCountFor(userId: string): Promise<number> {
     .from(submissions)
     .where(and(eq(submissions.userId, userId), eq(submissions.status, "verified")));
   return Number(rows[0]?.n ?? 0);
+}
+
+/**
+ * Resolve a single user's leaderboard standing. Used to render the "you're
+ * outside top 100" footer on /leaderboard. Pure D1 — no KV churn, since
+ * this lookup is per-user and the 5-min KV cache only covers the top-100
+ * list. Returns null when the user has no activity (zero points AND zero
+ * verified submissions) — they're not on the leaderboard at all.
+ *
+ * Rank is computed as: 1 + (count of public users with strictly more
+ * points than this user). Ties get the same numeric rank position as the
+ * SQL ORDER BY desc would assign (we do not implement dense_rank).
+ */
+export async function getRankFor(stakeAddress: string): Promise<
+  | { rank: number; totalPoints: number; verifiedSubmissions: number; projectsEngaged: number }
+  | null
+> {
+  const db = getDb();
+  const meRows = await db
+    .select({
+      stakeAddress: users.stakeAddress,
+      profileVisibility: users.profileVisibility,
+      totalPoints: sql<number>`COALESCE((SELECT SUM(delta) FROM points_ledger WHERE points_ledger.user_id = users.stake_address), 0)`,
+      verifiedSubmissions: sql<number>`COALESCE((SELECT COUNT(*) FROM submissions WHERE submissions.user_id = users.stake_address AND submissions.status = 'verified'), 0)`,
+      projectsEngaged: sql<number>`COALESCE((SELECT COUNT(DISTINCT t.project_id) FROM submissions s JOIN tasks t ON t.id = s.task_id WHERE s.user_id = users.stake_address AND s.status = 'verified'), 0)`,
+    })
+    .from(users)
+    .where(eq(users.stakeAddress, stakeAddress))
+    .limit(1);
+
+  const me = meRows[0];
+  if (!me) return null;
+  const totalPoints = Number(me.totalPoints ?? 0);
+  const verifiedSubmissions = Number(me.verifiedSubmissions ?? 0);
+  const projectsEngaged = Number(me.projectsEngaged ?? 0);
+  if (totalPoints === 0 && verifiedSubmissions === 0) return null;
+
+  // Strictly more points than this user, among public profiles. Private
+  // users are excluded from the leaderboard universe entirely (matches
+  // `getPointsLeaderboard`'s WHERE clause).
+  const aboveRows = await db
+    .select({
+      n: sql<number>`COUNT(*)`,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.profileVisibility, "public"),
+        sql`COALESCE((SELECT SUM(delta) FROM points_ledger WHERE points_ledger.user_id = users.stake_address), 0) > ${totalPoints}`,
+      ),
+    );
+  const above = Number(aboveRows[0]?.n ?? 0);
+  return { rank: above + 1, totalPoints, verifiedSubmissions, projectsEngaged };
+}
+
+export interface LatestTaskRow {
+  taskId: string;
+  taskTitle: string;
+  taskType: string;
+  points: number;
+  projectId: string;
+  projectName: string;
+  createdAt: number; // ms epoch
+}
+
+/**
+ * Latest tasks added across the platform, sourced from the audit log
+ * (`entity_type='task'`, `field='_create'`). Joins to tasks + projects.
+ * Filters to active tasks only. Falls back to ordering active tasks by
+ * `displayOrder DESC, id` when no audit rows exist (fresh DB / audit
+ * pipeline broken). Capped at `limit`.
+ */
+export async function getLatestTasksAdded(limit = 10): Promise<LatestTaskRow[]> {
+  const db = getDb();
+  const auditRows = await db
+    .select({
+      taskId: tasks.id,
+      taskTitle: tasks.title,
+      taskType: tasks.taskType,
+      points: tasks.points,
+      projectId: projects.id,
+      projectName: projects.name,
+      createdAt: auditLog.timestamp,
+    })
+    .from(auditLog)
+    .innerJoin(tasks, eq(tasks.id, auditLog.entityId))
+    .innerJoin(projects, eq(projects.id, tasks.projectId))
+    .where(
+      and(
+        eq(auditLog.entityType, "task"),
+        eq(auditLog.field, "_create"),
+        eq(tasks.status, "active"),
+      ),
+    )
+    .orderBy(desc(auditLog.timestamp))
+    .limit(limit);
+
+  if (auditRows.length > 0) {
+    return auditRows.map((r) => ({
+      taskId: r.taskId,
+      taskTitle: r.taskTitle,
+      taskType: r.taskType,
+      points: Number(r.points ?? 0),
+      projectId: r.projectId,
+      projectName: r.projectName,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.getTime() : Number(r.createdAt ?? 0),
+    }));
+  }
+
+  console.warn("[leaderboard:latest-tasks] audit empty, falling back to displayOrder");
+  const fallbackRows = await db
+    .select({
+      taskId: tasks.id,
+      taskTitle: tasks.title,
+      taskType: tasks.taskType,
+      points: tasks.points,
+      projectId: projects.id,
+      projectName: projects.name,
+    })
+    .from(tasks)
+    .innerJoin(projects, eq(projects.id, tasks.projectId))
+    .where(eq(tasks.status, "active"))
+    .orderBy(desc(tasks.displayOrder), tasks.id)
+    .limit(limit);
+
+  return fallbackRows.map((r) => ({
+    taskId: r.taskId,
+    taskTitle: r.taskTitle,
+    taskType: r.taskType,
+    points: Number(r.points ?? 0),
+    projectId: r.projectId,
+    projectName: r.projectName,
+    createdAt: 0,
+  }));
 }
 
 export async function getProjectsEngagedFor(userId: string): Promise<number> {

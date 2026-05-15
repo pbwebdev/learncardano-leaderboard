@@ -14,22 +14,37 @@ vi.mock("@opennextjs/cloudflare", () => ({
 }));
 
 // Stub the db client so module load doesn't try to read a real binding.
+// Tests that need richer behaviour push result arrays onto `dbResultsQueue`
+// before invoking the function under test; each terminal `.limit()` /
+// awaited `.where()` pops the next array. Otherwise returns [] (the default
+// used by the cache-layer tests above).
+const dbResultsQueue: unknown[][] = [];
+function nextDbResult(): unknown[] {
+  return dbResultsQueue.shift() ?? [];
+}
+// Make the chain await-able at every reasonable terminal — getPointsLeaderboard
+// uses .orderBy().limit(); getRankFor uses .where().limit() AND a bare
+// .where() that's awaited directly.
+function makeChain(): unknown {
+  // A Proxy that returns itself for any method call AND resolves to the next
+  // result array when awaited (via its `.then`).
+  const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+      if (prop === "then") {
+        return (resolve: (v: unknown) => void) => resolve(nextDbResult());
+      }
+      return () => makeChain();
+    },
+  };
+  return new Proxy({}, handler);
+}
 vi.mock("@/db/client", () => ({
-  getDb: () => ({
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          orderBy: () => ({
-            limit: async () => [],
-          }),
-        }),
-      }),
-    }),
-  }),
+  getDb: () => makeChain(),
 }));
 
 import {
   getCachedLeaderboard,
+  getRankFor,
   rankLeaderboardRows,
   refreshLeaderboardCache,
   sumDeltas,
@@ -201,6 +216,47 @@ describe("points: KV-cached leaderboard", () => {
     const v = JSON.parse(kvStore.get("leaderboard:top-100")!);
     expect(typeof v.fetchedAt).toBe("number");
     expect(Array.isArray(v.rows)).toBe(true);
+  });
+});
+
+describe("points: getRankFor", () => {
+  beforeEach(() => {
+    dbResultsQueue.length = 0;
+  });
+
+  it("returns null for an unknown user (no row)", async () => {
+    // First query (me lookup) returns empty.
+    dbResultsQueue.push([]);
+    const r = await getRankFor("stake1unknown");
+    expect(r).toBeNull();
+  });
+
+  it("returns null when user has zero points and zero verified submissions", async () => {
+    dbResultsQueue.push([
+      { stakeAddress: "stake1a", profileVisibility: "public", totalPoints: 0, verifiedSubmissions: 0, projectsEngaged: 0 },
+    ]);
+    const r = await getRankFor("stake1a");
+    expect(r).toBeNull();
+  });
+
+  it("computes rank = 1 + (count of users with strictly more points)", async () => {
+    // 1st result: the user's own stats
+    dbResultsQueue.push([
+      { stakeAddress: "stake1a", profileVisibility: "public", totalPoints: 42, verifiedSubmissions: 3, projectsEngaged: 2 },
+    ]);
+    // 2nd result: count of users above them
+    dbResultsQueue.push([{ n: 117 }]);
+    const r = await getRankFor("stake1a");
+    expect(r).toEqual({ rank: 118, totalPoints: 42, verifiedSubmissions: 3, projectsEngaged: 2 });
+  });
+
+  it("returns rank 1 when nobody has more points", async () => {
+    dbResultsQueue.push([
+      { stakeAddress: "stake1leader", profileVisibility: "public", totalPoints: 9999, verifiedSubmissions: 10, projectsEngaged: 5 },
+    ]);
+    dbResultsQueue.push([{ n: 0 }]);
+    const r = await getRankFor("stake1leader");
+    expect(r?.rank).toBe(1);
   });
 });
 
