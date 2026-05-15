@@ -310,6 +310,24 @@ button {
 body { animation: page-fade-in 250ms ease-out both; }
 @media (prefers-reduced-motion: reduce) { body { animation: none; } }
 
+/* ---------------------------------------------------------------------------
+ * Mobile helpers
+ * ------------------------------------------------------------------------- */
+
+/* Ensure primary interactive controls meet the WCAG 2.5.5 (Level AAA)
+   target-size guideline of 44×44 CSS px on touch surfaces. Apply to
+   small icon buttons, hamburger toggles, radio rows, etc. */
+.tap-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Open-state arrow for <details>/<summary> — Safari/Chrome render a
+   default marker we hide via list-none; this keeps the hamburger
+   icon-only and removes the marker on Firefox too. */
+details > summary::-webkit-details-marker { display: none; }
+details > summary { list-style: none; }
+
 /* Skip-to-content link */
 .skip-to-content {
   position: absolute;

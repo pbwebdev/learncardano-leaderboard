@@ -146,30 +146,31 @@ export function WalletButton({ signedIn }: { signedIn: boolean }) {
 
   if (isConnected && isEnabled && stakeAddress) {
     return (
-      <div className="flex items-center gap-2 font-sans text-xs">
-        <span className="text-[color:var(--fg-muted)]">
+      <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 font-sans text-xs min-w-0">
+        <span className="text-[color:var(--fg-muted)] truncate max-w-[60vw] sm:max-w-none">
           {enabledWallet}:{" "}
           <code className="font-mono text-[color:var(--fg)]">
-            {stakeAddress.slice(0, 12)}…{stakeAddress.slice(-6)}
+            <span className="hidden sm:inline">{stakeAddress.slice(0, 12)}…{stakeAddress.slice(-6)}</span>
+            <span className="sm:hidden">{stakeAddress.slice(0, 8)}…{stakeAddress.slice(-4)}</span>
           </code>
         </span>
         <button
           type="button"
           onClick={signIn}
           disabled={status === "signing" || status === "verifying"}
-          className="rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-primary-strong)] disabled:opacity-50"
+          className="rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-primary-strong)] disabled:opacity-50 whitespace-nowrap"
         >
-          {status === "signing" ? "Sign in wallet…" : status === "verifying" ? "Verifying…" : "Sign in"}
+          {status === "signing" ? "Sign…" : status === "verifying" ? "Verify…" : "Sign in"}
         </button>
         <button
           type="button"
           onClick={() => disconnect()}
-          className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-2 py-1 hover:bg-[color:var(--bg-elevated)]"
+          className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-2 py-1 hover:bg-[color:var(--bg-elevated)] whitespace-nowrap"
         >
           Disconnect
         </button>
         {error && (
-          <span role="alert" className="text-[color:var(--status-red)]">{error}</span>
+          <span role="alert" className="basis-full text-[color:var(--status-red)]">{error}</span>
         )}
       </div>
     );

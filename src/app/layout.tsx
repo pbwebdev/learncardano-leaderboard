@@ -17,6 +17,7 @@ import Link from "next/link";
 import "./globals.css";
 import { WalletButton } from "@/components/wallet-button-client";
 import { NavLink } from "@/components/nav-link";
+import { MobileNav } from "@/components/mobile-nav";
 import { LocalTime } from "@/components/local-time";
 import { ScammerEasterEgg, ScammerEasterEggTrigger } from "@/components/scammer-easter-egg";
 import { getCurrentStakeAddressOrNull } from "@/lib/auth";
@@ -119,39 +120,46 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <a href="#main" className="skip-to-content">Skip to main content</a>
         <header className="border-b border-[color:var(--rule)] bg-[color:var(--surface)] font-sans">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-            <nav className="flex items-center gap-5 text-sm">
-              <Link href="/" className="font-semibold tracking-tight text-[color:var(--fg-heading)]">
-                Learn Cardano Leaderboard
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
+            <div className="flex items-center gap-2 sm:gap-5 min-w-0">
+              <MobileNav />
+              <Link
+                href="/"
+                className="font-semibold tracking-tight text-[color:var(--fg-heading)] text-sm sm:text-base truncate"
+              >
+                <span className="hidden sm:inline">Learn Cardano Leaderboard</span>
+                <span className="sm:hidden">Learn Cardano</span>
               </Link>
-              <NavLink
-                href="/leaderboard"
-                className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
-                activeClassName="text-[color:var(--fg)]"
-              >
-                Leaderboard
-              </NavLink>
-              <NavLink
-                href="/projects"
-                className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
-                activeClassName="text-[color:var(--fg)]"
-              >
-                Projects
-              </NavLink>
-              <NavLink
-                href="/me"
-                className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
-                activeClassName="text-[color:var(--fg)]"
-              >
-                My dashboard
-              </NavLink>
-            </nav>
+              <nav className="hidden md:flex items-center gap-5 text-sm" aria-label="Primary">
+                <NavLink
+                  href="/leaderboard"
+                  className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
+                  activeClassName="text-[color:var(--fg)]"
+                >
+                  Leaderboard
+                </NavLink>
+                <NavLink
+                  href="/projects"
+                  className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
+                  activeClassName="text-[color:var(--fg)]"
+                >
+                  Projects
+                </NavLink>
+                <NavLink
+                  href="/me"
+                  className="text-[color:var(--fg-muted)] hover:text-[color:var(--fg)]"
+                  activeClassName="text-[color:var(--fg)]"
+                >
+                  My dashboard
+                </NavLink>
+              </nav>
+            </div>
             <WalletButton signedIn={signedIn} stakeAddress={stakeAddress} />
           </div>
         </header>
         <div id="main" className="flex-1">{children}</div>
         <footer className="mt-12 border-t border-[color:var(--rule)] py-6 font-sans text-xs text-[color:var(--fg-muted)]">
-          <div className="mx-auto max-w-6xl px-6 flex flex-wrap items-center justify-between gap-2">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2">
             <span>Built with ❤️ on Cardano</span>
             <span>
               A site by{" "}

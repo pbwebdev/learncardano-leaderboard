@@ -63,22 +63,31 @@ function SignedInChip({ stakeAddress }: { stakeAddress: string }) {
   }
 
   return (
-    <div className="flex items-center gap-2 font-sans text-xs">
-      <span className="rounded-full bg-[color:var(--status-green-bg)] px-2 py-0.5 text-[color:var(--status-green)]">
+    <div className="flex items-center gap-1.5 sm:gap-2 font-sans text-xs min-w-0">
+      <span
+        className="hidden sm:inline rounded-full bg-[color:var(--status-green-bg)] px-2 py-0.5 text-[color:var(--status-green)]"
+        aria-hidden="true"
+      >
         ● Signed in
       </span>
-      <span className="text-[color:var(--fg-muted)]">
+      <span
+        className="sm:hidden rounded-full bg-[color:var(--status-green-bg)] w-2 h-2 inline-block"
+        aria-label="Signed in"
+        title="Signed in"
+      />
+      <span className="text-[color:var(--fg-muted)] truncate">
         <code className="font-mono text-[color:var(--fg)]">
-          {stakeAddress.slice(0, 12)}…{stakeAddress.slice(-6)}
+          <span className="hidden sm:inline">{stakeAddress.slice(0, 12)}…{stakeAddress.slice(-6)}</span>
+          <span className="sm:hidden">{stakeAddress.slice(0, 8)}…{stakeAddress.slice(-4)}</span>
         </code>
       </span>
       <button
         type="button"
         onClick={signOut}
         disabled={busy}
-        className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-2 py-1 hover:bg-[color:var(--bg-elevated)] disabled:opacity-50"
+        className="rounded-[--radius-md] border border-[color:var(--border-strong)] px-2 py-1 hover:bg-[color:var(--bg-elevated)] disabled:opacity-50 whitespace-nowrap"
       >
-        {busy ? "Signing out…" : "Sign out"}
+        {busy ? "…" : "Sign out"}
       </button>
     </div>
   );
