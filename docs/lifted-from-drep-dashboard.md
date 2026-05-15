@@ -42,7 +42,7 @@ Sibling root (linux build box): `/home/aiagent/.openclaw/workspace/cardano-drep-
 | `stake-address.ts` | 🔵 | Bech32 helpers — a subset of sibling's `drep-id.ts`. |
 | `points.ts` | 🔵 | Mirrors sibling's `scoring.ts` coverage-cap state machine for payout-readiness. |
 | `leaderboard.ts` | 🔵 | KV-cached top-N query. New. |
-| `dub.ts` | 🔵 | New. Dub.co client. |
+| `short-io.ts` | 🔵 | New. Short.io client (replaces earlier Dub.co integration). |
 | `admin.ts` | 🔵 | New. Allow-list `requireAdmin()`. |
 
 ## `src/db/`
@@ -80,7 +80,7 @@ Sibling root (linux build box): `/home/aiagent/.openclaw/workspace/cardano-drep-
 | `leaderboard/page.tsx` | 🔵 | New. |
 | `projects/page.tsx`, `projects/[slug]/page.tsx` | 🔵 | New. |
 | `admin/**` | 🔵 | New. Allow-list gated. |
-| `api/submissions/[id]/route.ts`, `api/verify/[id]/route.ts`, `api/webhooks/{dub,bounty}/route.ts`, `api/oauth/{x,youtube}/{start,callback}/route.ts` | 🔵 | New. |
+| `api/submissions/[id]/route.ts`, `api/verify/[id]/route.ts`, `api/webhooks/{short-io,bounty}/route.ts`, `api/oauth/{x,youtube}/{start,callback}/route.ts` | 🔵 | New. |
 | `sitemap.ts`, `robots.ts` | 🔵 | New. Required for SEO. |
 
 ## `public/`
