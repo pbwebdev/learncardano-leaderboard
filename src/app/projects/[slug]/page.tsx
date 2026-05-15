@@ -1,0 +1,110 @@
+import Link from "next/link";
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
+import { and, asc, eq } from "drizzle-orm";
+import { getCurrentStakeAddressOrNull } from "@/lib/auth";
+import { getDb } from "@/db/client";
+import { projects, submissions, tasks } from "@/db/schema";
+import { renderMarkdown } from "@/lib/markdown";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const row = (await getDb().select({ name: projects.name, description: projects.description }).from(projects).where(eq(projects.id, slug)).limit(1))[0];
+  if (!row) return { title: "Project not found" };
+  const teaser = row.description.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? row.name;
+  return {
+    title: row.name,
+    description: teaser.slice(0, 160),
+  };
+}
+
+export default async function ProjectDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const stake = await getCurrentStakeAddressOrNull();
+  if (!stake) redirect("/");
+  const { slug } = await params;
+  const db = getDb();
+  const project = (await db.select().from(projects).where(eq(projects.id, slug)).limit(1))[0];
+  if (!project) notFound();
+
+  const taskRows = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.projectId, slug), eq(tasks.status, "active")))
+    .orderBy(asc(tasks.displayOrder));
+
+  // Pull this user's submissions for these tasks (one query, in-memory join).
+  const taskIds = taskRows.map((t) => t.id);
+  const mySubs = taskIds.length
+    ? await db.select({ taskId: submissions.taskId, status: submissions.status }).from(submissions).where(eq(submissions.userId, stake))
+    : [];
+  const myByTask = new Map<string, string[]>();
+  for (const s of mySubs) {
+    const list = myByTask.get(s.taskId) ?? [];
+    list.push(s.status);
+    myByTask.set(s.taskId, list);
+  }
+
+  const descriptionHtml = renderMarkdown(project.description);
+
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <p className="text-xs uppercase tracking-wide text-[color:var(--fg-muted)]">{project.category}</p>
+      <h1 className="mt-1 text-3xl font-bold tracking-tight">{project.name}</h1>
+      {project.websiteUrl && (
+        <p className="mt-2 text-sm">
+          <a href={project.websiteUrl} target="_blank" rel="noopener noreferrer" className="underline text-[color:var(--accent-info)]">{project.websiteUrl.replace(/^https?:\/\//, "")}</a>
+        </p>
+      )}
+
+      {/*
+        The markdown is rendered by our hand-rolled parser (lib/markdown.ts);
+        the output is HTML-escaped and limited to a safe subset, so dangerously-
+        SetInnerHTML is acceptable here. Surrounding `.prose` styles keep the
+        rendered output legible alongside the rest of the page chrome.
+       */}
+      <article className="prose mt-6 max-w-none text-sm leading-relaxed [&_a]:underline [&_h1]:mt-4 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h4]:mt-3 [&_h4]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_code]:rounded [&_code]:bg-[color:var(--bg-code)] [&_code]:px-1"
+        dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+      />
+
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold">Tasks</h2>
+        {taskRows.length === 0 ? (
+          <p className="mt-2 text-sm text-[color:var(--fg-muted)]">No active tasks yet.</p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {taskRows.map((t) => {
+              const myStatuses = myByTask.get(t.id) ?? [];
+              const hasVerified = myStatuses.includes("verified");
+              const hasPending = myStatuses.includes("pending");
+              const hideCta = hasVerified && t.maxCompletionsPerUser === 1;
+              return (
+                <li key={t.id} className="rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-base font-semibold">{t.title}</h3>
+                    <span className="text-xs text-[color:var(--fg-muted)]">{t.points} pts</span>
+                  </div>
+                  {t.descriptionMd && (
+                    <p className="mt-2 text-sm text-[color:var(--fg-muted)]">{t.descriptionMd}</p>
+                  )}
+                  <div className="mt-3 flex items-center gap-3 text-sm">
+                    {hideCta ? (
+                      <span className="rounded bg-green-200 px-2 py-0.5 text-xs font-medium text-green-900">Completed</span>
+                    ) : t.taskType === "manual_review" ? (
+                      <Link href={`/projects/${slug}/tasks/${t.id}/submit`} className="rounded-[--radius-md] bg-[color:var(--accent-primary)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-primary-strong)]">Submit proof</Link>
+                    ) : (
+                      <span className="text-xs text-[color:var(--fg-muted)]">Phase 2 — auto verification</span>
+                    )}
+                    {hasPending && <span className="text-xs text-[color:var(--fg-muted)]">Submission pending review</span>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </main>
+  );
+}
