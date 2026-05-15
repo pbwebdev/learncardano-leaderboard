@@ -1,0 +1,71 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "learncardano-leaderboard",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-05-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "learncardano-leaderboard-db",
+			"database_id": "32a53fd3-781f-4609-8368-1ab27de13ff6",
+			"migrations_dir": "drizzle/migrations",
+			"remote": true
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "2269506af544460faee089ba25ca44a3",
+			"preview_id": "192dd581c64240a19160bda3bb92c319",
+			"remote": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "R2",
+			"bucket_name": "learncardano-leaderboard"
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "VERIFY_QUEUE",
+				"queue": "learncardano-leaderboard-verify"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "learncardano-leaderboard-verify",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5,
+				"max_retries": 3
+			}
+		]
+	},
+	"triggers": {
+		// Cron schedules — wired into a future scheduled() handler. Phase 0 has no
+		// cron consumer yet; these are declared so Phase 2's cron handler can hook
+		// in without redeploy churn.
+		"crons": [
+			"0 */6 * * *",   // 6-hourly: delegation re-check
+			"5 * * * *",     // hourly: leaderboard cache refresh
+			"15 3 * * *"     // daily 03:15 UTC: DRep activity re-check + batch verify
+		]
+	},
+	"vars": {
+		"OWNER_STAKE_ADDRESS": "",
+		"ADMIN_STAKE_ADDRESSES": "",
+		"ALLOW_ENV_AUTH": "false"
+	}
+}
