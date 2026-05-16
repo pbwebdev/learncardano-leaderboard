@@ -87,13 +87,33 @@ export default async function HomePage() {
                 href={c.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center gap-2 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-center transition-colors hover:border-[color:var(--accent-primary)]"
+                className="group flex flex-col items-center gap-2 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-center transition-colors hover:border-[color:var(--accent-primary)]"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--bg-elevated)] text-[color:var(--fg-muted)]">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                  </svg>
-                </span>
+                {c.avatar ? (
+                  // Avatars are sourced from the creators themselves via
+                  // public/avatars/. Sized at 56px so the row reads as
+                  // a portrait strip. Plain <img> rather than next/image
+                  // because the asset count is tiny and we avoid the
+                  // remotePatterns config overhead.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={c.avatar}
+                    alt={`${c.displayName ?? c.handle} avatar`}
+                    width={56}
+                    height={56}
+                    className="h-14 w-14 rounded-full object-cover ring-1 ring-[color:var(--border)] transition-transform group-hover:scale-105"
+                    loading="lazy"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--bg-elevated)] text-[color:var(--fg-muted)] ring-1 ring-[color:var(--border)]"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                  </span>
+                )}
                 <span className="font-mono text-xs text-[color:var(--fg)] break-all">
                   @{c.displayName ?? c.handle}
                 </span>

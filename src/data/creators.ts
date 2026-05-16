@@ -12,16 +12,20 @@
  */
 
 export interface ContentCreator {
-  handle: string;     // without the @ prefix
-  url: string;        // canonical X profile URL
+  handle: string;       // without the @ prefix
+  url: string;          // canonical X profile URL
   displayName?: string; // optional friendly name; falls back to @handle
+  avatar?: string;      // path under public/, e.g. "/avatars/astroboysoup.jpg".
+                        // When omitted, the X-logo placeholder renders.
 }
 
 export const CONTENT_CREATORS: ContentCreator[] = [
-  { handle: "astroboysoup",  url: "https://x.com/astroboysoup" },
-  { handle: "Cryptofly777",  url: "https://x.com/Cryptofly777" },
-  { handle: "bigpey",        url: "https://x.com/bigpey" },
-  { handle: "cwpaulm",       url: "https://x.com/cwpaulm" },
-  { handle: "DaveXCrypto",   url: "https://x.com/DaveXCrypto" },
-  { handle: "lapetiteada",   url: "https://x.com/lapetiteada" },
+  { handle: "astroboysoup",  url: "https://x.com/astroboysoup",  avatar: "/avatars/astroboysoup.jpg" },
+  { handle: "Cryptofly777",  url: "https://x.com/Cryptofly777",  avatar: "/avatars/cryptofly777.jpg" },
+  { handle: "bigpey",        url: "https://x.com/bigpey",        avatar: "/avatars/bigpey.jpg" },
+  // cwpaulm: file is named cwpaul.jpg (no trailing m) — same person, renamed
+  // file would be cleaner if the handle is authoritative.
+  { handle: "cwpaulm",       url: "https://x.com/cwpaulm",       avatar: "/avatars/cwpaul.jpg" },
+  { handle: "DaveXCrypto",   url: "https://x.com/DaveXCrypto",   avatar: "/avatars/DaveXCrypto.jpg" },
+  { handle: "lapetiteada",   url: "https://x.com/lapetiteada",   avatar: "/avatars/LaPetiteADA.jpg" },
 ];
