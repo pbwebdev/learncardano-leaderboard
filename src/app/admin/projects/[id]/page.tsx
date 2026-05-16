@@ -80,6 +80,10 @@ export default async function AdminProjectEditPage({ params }: { params: Promise
           <span>Display order</span>
           <input name="displayOrder" type="number" defaultValue={project.displayOrder} className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />
         </label>
+        <label className="flex items-center gap-2 self-end pb-1.5 text-sm">
+          <input type="checkbox" name="featured" defaultChecked={project.featured} />
+          <span>Featured on landing page</span>
+        </label>
         <label className="flex flex-col gap-1">
           <span>Campaign start date</span>
           <input name="campaignStartDate" type="date" defaultValue={project.campaignStartDate ? project.campaignStartDate.toISOString().slice(0, 10) : ""} className="rounded border border-[color:var(--border)] bg-[color:var(--bg)] px-2 py-1" />

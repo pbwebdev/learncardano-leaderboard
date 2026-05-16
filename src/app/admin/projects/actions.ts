@@ -106,6 +106,9 @@ export async function updateProject(formData: FormData): Promise<void> {
   }
   const order = Number(readString(formData, "displayOrder") || String(existing.displayOrder));
   if (order !== existing.displayOrder) changes["displayOrder"] = order;
+  const featured = readString(formData, "featured") === "on" ? 1 : 0;
+  const prevFeatured = existing.featured ? 1 : 0;
+  if (featured !== prevFeatured) changes["featured"] = featured;
   const csd = readDate(formData, "campaignStartDate");
   const prevCsd = existing.campaignStartDate ? existing.campaignStartDate.getTime() : null;
   if ((csd?.getTime() ?? null) !== prevCsd) changes["campaignStartDate"] = csd ? csd.getTime() : null;

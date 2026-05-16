@@ -103,6 +103,10 @@ export const projects = sqliteTable("projects", {
   // shares them via DM. Never exposed publicly. Copy values from here
   // into the task config when wiring tx_swap strict verification.
   partnerNotes: text("partner_notes"),
+  // 1 = surface in the landing-page "Featured projects" strip.
+  // Independent of status='active' on /projects (every active project
+  // shows in the gallery; only featured ones appear on the home hero).
+  featured: integer("featured", { mode: "boolean" }).notNull().default(false),
 });
 
 /**

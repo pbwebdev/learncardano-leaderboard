@@ -70,6 +70,11 @@ Fictional governance tooling.  Delegate to a DRep, vote on proposals, earn point
    'governance', 'active', 2, NULL,
    '⚠️ TEST DATA — visual design only.');
 
+-- Mark all three test projects as featured so the landing strip
+-- exercises the layout. (INSERT OR IGNORE above won't UPDATE existing
+-- rows; this statement is idempotent and safe to re-run.)
+UPDATE projects SET featured = 1 WHERE id LIKE 'test-%';
+
 -- ── Tasks ──────────────────────────────────────────────────────────────────
 -- 4 per project = 12 total.  Mix of types so admin views + project pages
 -- exercise the full task-type styling.

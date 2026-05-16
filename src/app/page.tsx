@@ -1,10 +1,22 @@
 import Link from "next/link";
+import { and, asc, eq } from "drizzle-orm";
 import { getCurrentStakeAddressOrNull } from "@/lib/auth";
+import { getDb } from "@/db/client";
+import { projects } from "@/db/schema";
+import { CONTENT_CREATORS } from "@/data/creators";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const stakeAddress = await getCurrentStakeAddressOrNull();
+  const [stakeAddress, featured] = await Promise.all([
+    getCurrentStakeAddressOrNull(),
+    getDb()
+      .select({ id: projects.id, name: projects.name, category: projects.category, logoR2Key: projects.logoR2Key })
+      .from(projects)
+      .where(and(eq(projects.status, "active"), eq(projects.featured, true)))
+      .orderBy(asc(projects.displayOrder), asc(projects.name))
+      .limit(12),
+  ]);
   const signedIn = !!stakeAddress;
 
   return (
@@ -55,6 +67,80 @@ export default async function HomePage() {
         </section>
       )}
 
+      {/* ── Partnered content creators ────────────────────────────────── */}
+      <section className="mt-20 sm:mt-24">
+        <div className="flex items-baseline justify-between gap-4 flex-wrap">
+          <div>
+            <span className="pretitle">Partnered creators</span>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">
+              Making content for the platform
+            </h2>
+          </div>
+          <p className="text-sm text-[color:var(--fg-muted)]">
+            From the Cardano Content Creators Consortium.
+          </p>
+        </div>
+        <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {CONTENT_CREATORS.map((c) => (
+            <li key={c.handle}>
+              <a
+                href={c.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center gap-2 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-center transition-colors hover:border-[color:var(--accent-primary)]"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--bg-elevated)] text-[color:var(--fg-muted)]">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                </span>
+                <span className="font-mono text-xs text-[color:var(--fg)] break-all">
+                  @{c.displayName ?? c.handle}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── Featured projects strip ──────────────────────────────────── */}
+      {featured.length > 0 && (
+        <section className="mt-16 sm:mt-20">
+          <div className="flex items-baseline justify-between gap-4 flex-wrap">
+            <div>
+              <span className="pretitle">Featured projects</span>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">
+                Cardano dApps you can earn from today
+              </h2>
+            </div>
+            <Link
+              href="/projects"
+              className="text-sm text-[color:var(--accent-info)] hover:text-[color:var(--accent-info-strong)] underline"
+            >
+              See all projects →
+            </Link>
+          </div>
+          <ul className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+            {featured.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="group flex flex-col items-center gap-2 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-center transition-colors hover:border-[color:var(--accent-primary)]"
+                >
+                  <ProjectLogoMark name={p.name} category={p.category} hasLogo={!!p.logoR2Key} />
+                  <span className="text-xs font-semibold text-[color:var(--fg)]">
+                    {p.name}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wide text-[color:var(--fg-muted)]">
+                    {p.category}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-16 sm:mt-24">
         <div className="cta-banner flex flex-col items-stretch gap-5 p-6 sm:p-8 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-6">
           <div>
@@ -63,9 +149,15 @@ export default async function HomePage() {
               Partner with Learn Cardano to launch a campaign — verified tasks, on-chain rewards, transparent payouts.
             </p>
           </div>
+          {/*
+            Indigo-700 hardcoded for the text colour — we need AA contrast
+            against the white button background, and var(--accent-primary)
+            is indigo-500 (#6366f1) in dark mode which falls below 4.5:1
+            on white. indigo-700 (#4338ca) sits at ~8:1 across both modes.
+          */}
           <Link
             href="/partners"
-            className="inline-flex items-center justify-center rounded-[--radius-md] bg-white px-6 py-3 font-semibold text-[color:var(--accent-primary)] hover:opacity-90 w-full md:w-auto"
+            className="inline-flex items-center justify-center rounded-[--radius-md] bg-white px-6 py-3 font-semibold text-indigo-700 hover:bg-indigo-50 w-full md:w-auto"
           >
             See what we need
           </Link>
@@ -86,5 +178,38 @@ function Feature({ title, body }: { title: string; body: string }) {
       <h3 className="mt-4 text-lg font-semibold text-[color:var(--fg-heading)]">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-[color:var(--fg-muted)]">{body}</p>
     </div>
+  );
+}
+
+/**
+ * Grayscale logo placeholder for the featured-projects strip.
+ *
+ * If the project has uploaded a logo (logo_r2_key set), we'd ideally
+ * render it via a signed R2 URL. That plumbing isn't built yet — the
+ * column is reserved for Phase 5+ logo uploads. For now every featured
+ * project gets a circular initial-mark sized to match an eventual
+ * 40×40 logo, with a per-category accent on the ring so the strip
+ * doesn't feel monotone.
+ *
+ * The marks render at grayscale opacity by default and warm up to
+ * full accent on hover, which is the "grey scale logos" visual Peter
+ * asked for.
+ */
+function ProjectLogoMark({ name, category, hasLogo: _hasLogo }: { name: string; category: string; hasLogo: boolean }) {
+  const initial = name.trim().charAt(0).toUpperCase() || "•";
+  const ring =
+    category === "defi" ? "ring-emerald-400/40"
+    : category === "nft" ? "ring-pink-400/40"
+    : category === "governance" ? "ring-amber-400/40"
+    : category === "education" ? "ring-sky-400/40"
+    : category === "gaming" ? "ring-fuchsia-400/40"
+    : "ring-indigo-400/40";
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-12 w-12 items-center justify-center rounded-full bg-[color:var(--bg-elevated)] text-base font-bold text-[color:var(--fg-muted)] ring-2 ${ring} grayscale opacity-80 transition group-hover:grayscale-0 group-hover:opacity-100`}
+    >
+      {initial}
+    </span>
   );
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `featured` integer DEFAULT false NOT NULL;

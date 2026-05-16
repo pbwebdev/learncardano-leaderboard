@@ -36,6 +36,13 @@
       "when": 1778885093810,
       "tag": "0004_partner_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1778889590787,
+      "tag": "0005_featured_projects",
+      "breakpoints": true
     }
   ]
 }
