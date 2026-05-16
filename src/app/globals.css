@@ -300,7 +300,11 @@ button {
   border-radius: var(--radius-xl);
   padding: 2rem;
 }
-.cta-banner a, .cta-banner h2 { color: #ffffff; }
+/* Heading + paragraph copy inside the banner pick up the banner foreground.
+   Anchor descendants are deliberately NOT included — buttons like
+   "See what we need" supply their own text colour (text-indigo-700) for
+   AA contrast against the white button background. */
+.cta-banner h2, .cta-banner p { color: #ffffff; }
 
 /* Soft page fade-in. */
 @keyframes page-fade-in {
