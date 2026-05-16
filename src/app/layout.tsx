@@ -41,7 +41,11 @@ const sans = Roboto({
 // Placeholder — Peter will confirm the production subdomain (likely
 // `leaderboard.learncardano.io` matching the sibling pattern).
 const SITE_URL = "https://leaderboard.learncardano.io";
-const OG_IMAGE = `${SITE_URL}/og-image.png`;
+const OG_IMAGE_WEBP = `${SITE_URL}/og-image.webp`;
+const OG_IMAGE_PNG = `${SITE_URL}/og-image.png`;
+const OG_IMAGE_W = 1731;
+const OG_IMAGE_H = 909;
+const OG_IMAGE_ALT = "Learn Cardano Leaderboard — earn rewards by completing tasks across Cardano projects";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -69,12 +73,23 @@ export const metadata: Metadata = {
     title: "Learn Cardano Leaderboard",
     description:
       "Complete on-chain and social tasks across partnered Cardano projects, earn points and token rewards.",
+    // WebP first — smaller payload, supported by every modern scraper
+    // (FB, X, LinkedIn, Discord, Slack). PNG kept as the safety net for
+    // older scrapers that still expect PNG/JPEG.
     images: [
       {
-        url: OG_IMAGE,
-        width: 1731,
-        height: 909,
-        alt: "Learn Cardano Leaderboard - earn rewards by completing tasks across Cardano projects",
+        url: OG_IMAGE_WEBP,
+        type: "image/webp",
+        width: OG_IMAGE_W,
+        height: OG_IMAGE_H,
+        alt: OG_IMAGE_ALT,
+      },
+      {
+        url: OG_IMAGE_PNG,
+        type: "image/png",
+        width: OG_IMAGE_W,
+        height: OG_IMAGE_H,
+        alt: OG_IMAGE_ALT,
       },
     ],
   },
@@ -86,10 +101,8 @@ export const metadata: Metadata = {
     description:
       "Complete on-chain and social tasks across partnered Cardano projects, earn points and token rewards.",
     images: [
-      {
-        url: OG_IMAGE,
-        alt: "Learn Cardano Leaderboard",
-      },
+      { url: OG_IMAGE_WEBP, alt: OG_IMAGE_ALT },
+      { url: OG_IMAGE_PNG, alt: OG_IMAGE_ALT },
     ],
   },
   icons: {
