@@ -26,7 +26,7 @@ type Status = "idle" | "signing" | "verifying" | "error";
  */
 export function WalletButton({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
-  const [installed, setInstalled] = useState<string[]>([]);
+  const [installed, setInstalled] = useState<Array<{ name: string; icon?: string }>>([]);
   const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -44,11 +44,11 @@ export function WalletButton({ signedIn }: { signedIn: boolean }) {
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined" && window.cardano) {
-      const names = Object.keys(window.cardano).filter((k) => {
-        const w = (window.cardano as Record<string, unknown>)[k] as { apiVersion?: string } | undefined;
-        return !!w?.apiVersion;
-      });
-      setInstalled(names);
+      const cardano = window.cardano as Record<string, { apiVersion?: string; icon?: string }>;
+      const list = Object.keys(cardano)
+        .filter((k) => !!cardano[k]?.apiVersion)
+        .map((name) => ({ name, icon: cardano[name]?.icon }));
+      setInstalled(list);
     }
   }, []);
 
@@ -183,32 +183,45 @@ export function WalletButton({ signedIn }: { signedIn: boolean }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="rounded-[--radius-md] border border-[color:var(--border-strong)] bg-[color:var(--surface)] px-3 py-1.5 font-sans text-sm hover:bg-[color:var(--bg-elevated)]"
+        className="rounded-[--radius-md] border border-[color:var(--border-strong)] bg-[color:var(--surface-card)] px-3 py-1.5 font-sans text-sm hover:bg-[color:var(--bg-elevated)]"
       >
         Connect wallet
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-56 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface)] p-2 shadow-[var(--shadow-card)] font-sans text-sm">
+        // bg-[color:var(--surface-card)] resolves to a real CSS var
+        // (surface-card is the defined token; the older bg-surface alias
+        // resolved to nothing in dark mode, leaving the dropdown
+        // transparent over the page background).
+        <div className="absolute right-0 z-50 mt-2 w-56 rounded-[--radius-md] border border-[color:var(--border)] bg-[color:var(--surface-card)] p-2 shadow-[var(--shadow-card)] font-sans text-sm">
           {installed.length === 0 ? (
             <div className="px-2 py-2 text-xs text-[color:var(--fg-muted)]">
               No CIP-30 wallet found. Install Eternl, Lace, Nami, Typhon, or another Cardano wallet.
             </div>
           ) : (
-            installed.map((name) => (
+            installed.map((w) => (
               <button
-                key={name}
+                key={w.name}
                 type="button"
                 onClick={async () => {
                   setOpen(false);
                   try {
-                    await connect(name);
+                    await connect(w.name);
                   } catch (e) {
                     setError(e instanceof Error ? e.message : String(e));
                   }
                 }}
-                className="block w-full rounded px-2 py-1.5 text-left capitalize hover:bg-[color:var(--bg-elevated)]"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left capitalize hover:bg-[color:var(--bg-elevated)]"
               >
-                {name}
+                {w.icon ? (
+                  // CIP-30 wallets each expose their own icon on
+                  // window.cardano[name].icon (typically a data:
+                  // URL). Render it directly — no SDK dependency.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={w.icon} alt="" width={20} height={20} className="h-5 w-5 rounded" />
+                ) : (
+                  <span aria-hidden="true" className="inline-block h-5 w-5 rounded bg-[color:var(--bg-elevated)]" />
+                )}
+                <span>{w.name}</span>
               </button>
             ))
           )}
